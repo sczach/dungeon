@@ -3,7 +3,7 @@
 This repo aims to reduce friction for tracking and following up on applications.
 
 ## Quick start
-- Log applications in `data/applications.csv` or via the CLI in `scripts/job_tracker.py`.
+- Log applications in `data/applications.csv`, via the CLI (`scripts/job_tracker.py`), or through the browser UI (`python scripts/web_tracker.py`).
 - Capture next actions and dates so you always know what to do next.
 - Add notes on referrals, portfolio links, and recruiter contact info.
 
@@ -18,6 +18,7 @@ This repo aims to reduce friction for tracking and following up on applications.
 ## CLI examples
 - List everything: `python scripts/job_tracker.py list`
 - Filter by status: `python scripts/job_tracker.py list --status interview`
+- Browse/manage without the terminal: `python scripts/web_tracker.py` then open [http://localhost:5000](http://localhost:5000).
 - Add a new application:
   ```bash
   python scripts/job_tracker.py add \
