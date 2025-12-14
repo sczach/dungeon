@@ -10,3 +10,4 @@ Lightweight workspace for personal productivity tooling.
 1. Install dependencies: `python -m pip install -r requirements.txt`
 2. Run the server: `python scripts/web_tracker.py`
 3. Open [http://localhost:5000](http://localhost:5000) to add, filter, and update applications without the terminal.
+4. Need a full walkthrough? See [docs/web_ui_walkthrough.md](docs/web_ui_walkthrough.md) for a browser-only step-by-step.

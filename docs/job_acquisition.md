@@ -3,7 +3,7 @@
 This repo aims to reduce friction for tracking and following up on applications.
 
 ## Quick start
-- Log applications in `data/applications.csv`, via the CLI (`scripts/job_tracker.py`), or through the browser UI (`python scripts/web_tracker.py`).
+- Log applications in `data/applications.csv`, via the CLI (`scripts/job_tracker.py`), or through the browser UI (`python scripts/web_tracker.py`). See the browser walkthrough in [docs/web_ui_walkthrough.md](web_ui_walkthrough.md) for step-by-step instructions on the page layout.
 - Capture next actions and dates so you always know what to do next.
 - Add notes on referrals, portfolio links, and recruiter contact info.
 
