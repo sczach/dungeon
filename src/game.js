@@ -166,7 +166,13 @@ function startGame() {
     noiseFloor: state.audio.noiseFloor,
   });
 
+  // Preserve canvas dimensions — these are managed by onResize(), not game logic.
+  // Object.assign would replace state.canvas with {width:0,height:0} from fresh,
+  // causing the W===0 guard in draw() to bail on every frame until a resize fires.
+  const savedCanvas = state.canvas;
   Object.assign(state, fresh);
+  state.canvas = savedCanvas;
+
   waveManager.reset();    // restart waves from Wave 1
   promptManager.reset();  // restart prompt cycle and debounce timers
   state.prompt.active = true;
