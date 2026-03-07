@@ -1,0 +1,130 @@
+/* ── Chord Wars — global styles ───────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg:        #0d0d1a;
+  --surface:   #161628;
+  --accent:    #7c3aed;
+  --accent-hi: #a855f7;
+  --text:      #e2e8f0;
+  --text-dim:  #64748b;
+  --danger:    #ef4444;
+  --success:   #22c55e;
+  --hud-h:     48px;
+  --footer-h:  60px;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 16px;
+  overflow: hidden;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
+
+#app {
+  display: grid;
+  grid-template-rows: var(--hud-h) 1fr var(--footer-h);
+  height: 100vh;
+}
+
+/* ── HUD ───────────────────────────────────────────────────────────────────── */
+
+#hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid #2d2d44;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.chord-display {
+  font-size: 1.25rem;
+  color: var(--accent-hi);
+  min-width: 10ch;
+  text-align: center;
+  transition: color 0.15s;
+}
+
+.chord-display.active {
+  color: var(--success);
+}
+
+/* ── Stage / Canvas ────────────────────────────────────────────────────────── */
+
+#stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+#game-canvas {
+  display: block;
+  /* Scale to fit while preserving 16∶9 aspect ratio */
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: pixelated;
+  border: 1px solid #2d2d44;
+}
+
+/* ── Footer / Controls ─────────────────────────────────────────────────────── */
+
+#controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 1rem;
+  background: var(--surface);
+  border-top: 1px solid #2d2d44;
+}
+
+button {
+  padding: 0.35rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent-hi);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+#status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+#mic-level {
+  width: 80px;
+  height: 10px;
+  accent-color: var(--success);
+}

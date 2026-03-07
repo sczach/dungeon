@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chord Wars</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="hud">
+      <span id="hud-wave">Wave 1</span>
+      <span id="hud-chord" class="chord-display">— play a chord —</span>
+      <span id="hud-hp">HP: 20</span>
+    </header>
+
+    <main id="stage">
+      <canvas id="game-canvas" width="960" height="540"></canvas>
+    </main>
+
+    <footer id="controls">
+      <button id="btn-start" type="button">Start Game</button>
+      <button id="btn-mic"   type="button" disabled>Enable Mic</button>
+      <div id="status-bar">
+        <span id="status-text">Press Start to begin</span>
+        <meter id="mic-level" min="0" max="1" low="0.01" optimum="0.5" value="0"></meter>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ES-module entry point -->
+  <script type="module" src="src/game.js"></script>
+</body>
+</html>
