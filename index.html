@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>Chord Wars</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Primary render surface -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- UI overlay: all HUD / screen elements sit above the canvas.
+       Individual screens are shown/hidden by game.js via data-scene attribute on <body>. -->
+  <div id="overlay" aria-live="polite">
+
+    <!-- ── TITLE screen ── -->
+    <section class="screen" id="screen-title" data-show-on="TITLE">
+      <h1 class="logo">CHORD<br>WARS</h1>
+      <p class="tagline">Play guitar. Summon warriors. Defend the realm.</p>
+      <button class="btn btn--primary" id="btn-start">Start Game</button>
+      <button class="btn btn--ghost"   id="btn-practice">Practice Mode</button>
+      <p class="mic-notice">🎙 Microphone required</p>
+    </section>
+
+    <!-- ── CALIBRATION screen ── -->
+    <section class="screen" id="screen-calibration" data-show-on="CALIBRATION">
+      <h2>Tune Up</h2>
+      <p>Play any open chord so we can set your noise floor.</p>
+      <div id="calibration-meter">
+        <div id="calibration-bar"></div>
+      </div>
+      <p id="calibration-status">Listening…</p>
+      <button class="btn btn--primary" id="btn-calibration-done" disabled>Ready — Let's Play</button>
+    </section>
+
+    <!-- ── PLAYING HUD (imported by hud.js; this is the mount point) ── -->
+    <section class="screen hud" id="screen-hud" data-show-on="PLAYING">
+      <!-- Populated at runtime by src/ui/hud.js -->
+    </section>
+
+    <!-- ── VICTORY screen ── -->
+    <section class="screen" id="screen-victory" data-show-on="VICTORY">
+      <h2>Victory!</h2>
+      <p id="victory-score"></p>
+      <button class="btn btn--primary" id="btn-play-again-victory">Play Again</button>
+      <button class="btn btn--ghost"   id="btn-title-victory">Main Menu</button>
+    </section>
+
+    <!-- ── DEFEAT screen ── -->
+    <section class="screen" id="screen-defeat" data-show-on="DEFEAT">
+      <h2>Defeated…</h2>
+      <p id="defeat-score"></p>
+      <button class="btn btn--primary" id="btn-play-again-defeat">Try Again</button>
+      <button class="btn btn--ghost"   id="btn-title-defeat">Main Menu</button>
+    </section>
+
+  </div><!-- /#overlay -->
+
+  <!-- Entry point — type="module" gives us ES module scope and deferred execution -->
+  <script type="module" src="src/game.js"></script>
+
+</body>
+</html>
