@@ -12,12 +12,7 @@
  */
 
 import { Renderer } from './renderer.js';
-import {
-  startCapture,
-  updateAudio,
-  updateCalibration,
-  stopCapture,
-} from './audio/index.js';
+import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
 
 // ─────────────────────────────────────────────
 // Scene identifiers (string constants so they

@@ -19,21 +19,19 @@
  *  • RMS noise gate — caller must confirm signal is live before calling.
  *  • HOLD_FRAMES debounce — chord must win N consecutive frames.
  *  • CONFIDENCE_THRESHOLD — cosine similarity must exceed 0.60.
- *  • MARGIN — best score must beat runner-up by at least 0.08.
+ *  • MARGIN — best score must beat runner-up by at least 0.15.
  *
  * Known limitations
  * ─────────────────
  *  • E major vs E minor: both share E(4) and B(11).  The distinguishing note
  *    is G(7) for Em versus G#(8) for E.  At guitar fundamentals (~196 Hz and
  *    ~207 Hz) the 21.5 Hz/bin FFT resolution is marginal.  However, harmonics
- *    (e.g. 3rd harmonic at ~588 / 623 Hz) are well-resolved.  In practice the
- *    chromagram accumulates enough harmonic energy to distinguish them, but
- *    results may be less reliable on cheap microphones or in noisy rooms.
+ *    (e.g. 3rd harmonic at ~588 / 623 Hz) are well-resolved.  The 0.15 margin
+ *    guard means E/Em only commits when the chromagram clearly favours one.
+ *    Results may still be less reliable on cheap microphones or in noisy rooms.
  *  • Capo / alternate tunings are not modelled.
  *  • Barre chords or voicings beyond the 6 open shapes are not detected.
  */
-
-import { FFT_SIZE } from './analyzer.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Chord templates
@@ -79,7 +77,8 @@ export const CHORD_LABELS = Object.freeze(Object.keys(TEMPLATES));
 
 // Matching thresholds
 const CONFIDENCE_THRESHOLD = 0.60;   // minimum cosine similarity to report a chord
-const MARGIN               = 0.08;   // best score must beat runner-up by this much
+const MARGIN               = 0.15;   // best score must beat runner-up by this much
+                                     // 0.15 is tight enough to suppress E/Em confusion
 
 // Chromagram frequency range (Hz) — captures guitar fundamentals + harmonics
 const CHROMA_MIN_FREQ = 80;

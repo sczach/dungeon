@@ -19,7 +19,7 @@
  * ───────────────────────────────────
  *   1. Noise gate  — RMS must exceed noiseFloor × 1.5 (with 4-frame hold).
  *   2. Threshold   — cosine similarity ≥ 0.60.
- *   3. Margin      — winner must beat runner-up by ≥ 0.08.
+ *   3. Margin      — winner must beat runner-up by ≥ 0.15.
  *   4. Debounce    — chord must win HOLD_FRAMES consecutive frames before
  *                    being written to state.
  *   5. Fade-out    — confidence decays at 0.04/frame when signal drops,
@@ -57,7 +57,8 @@ const _gateState = { count: 0 };
 const _chordState = { candidate: null, frames: 0 };
 
 // Calibration — count frames with a live analyser
-let _calibFrames = 0;
+let _calibFrames  = 0;
+let _captureFailed = false;   // set when startCapture() throws (e.g. permission denied)
 const CALIB_SETTLE_FRAMES = 90;   // ~1.5 s at 60 fps before "Ready" unlocks
 
 // How many consecutive frames the winning chord must appear before we commit
@@ -101,7 +102,8 @@ export async function startCapture(state) {
     );
   } catch (err) {
     console.error('[audio] startCapture failed:', err);
-    // state.audio.ready stays false; game shows an error UI in Phase 1C
+    _captureFailed = true;
+    // state.audio.ready stays false; updateCalibration will unblock the button
   }
 }
 
@@ -110,8 +112,10 @@ export async function startCapture(state) {
  * Safe to call when capture was never started.
  */
 export function stopCapture() {
-  _audioCtx   = null;
-  _analyser   = null;
+  _audioCtx      = null;
+  _analyser      = null;
+  _captureFailed = false;
+  _calibFrames   = 0;
   _gateState.count        = 0;
   _chordState.candidate   = null;
   _chordState.frames      = 0;
@@ -133,6 +137,20 @@ export function stopCapture() {
  * @param {object} state — canonical game state
  */
 export function updateCalibration(state) {
+  // ── Capture failed (e.g. permission denied) — unblock the button so the
+  // user isn't stuck.  The game will run without chord detection.
+  if (_captureFailed) {
+    const btn    = /** @type {HTMLButtonElement|null} */ (
+      document.getElementById('btn-calibration-done')
+    );
+    const status = document.getElementById('calibration-status');
+    if (btn && btn.disabled) {
+      if (status) status.textContent = 'Mic unavailable — chord detection disabled.';
+      btn.disabled = false;
+    }
+    return;
+  }
+
   if (!_analyser || _audioCtx?.state !== 'running') return;
 
   const { timeDomain, rms } = readTimeDomain(_analyser);
@@ -222,6 +240,11 @@ export function updateAudio(state, dt) {   // eslint-disable-line no-unused-vars
 
     // ── 5. Debounce — commit only after HOLD_FRAMES consistent detections ───
     if (_chordState.frames >= HOLD_FRAMES) {
+      if (state.audio.detectedChord !== match.chord) {
+        console.debug(
+          `[audio] chord: ${match.chord}  conf: ${match.confidence.toFixed(3)}`
+        );
+      }
       state.audio.detectedChord = match.chord;
       state.audio.confidence    = match.confidence;
     }
