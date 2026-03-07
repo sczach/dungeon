@@ -11,9 +11,11 @@
  * Scene states: TITLE | CALIBRATION | PLAYING | VICTORY | DEFEAT
  */
 
-import { Renderer }    from './renderer.js';
+import { Renderer }      from './renderer.js';
 import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
-import { WaveManager } from './systems/waves.js';
+import { WaveManager }   from './systems/waves.js';
+import { updateCombat }  from './systems/combat.js';
+import { PromptManager } from './systems/prompts.js';
 
 // ─────────────────────────────────────────────
 // Scene identifiers (string constants so they
@@ -80,11 +82,12 @@ function createInitialState() {
 // ─────────────────────────────────────────────
 // Bootstrap
 // ─────────────────────────────────────────────
-const canvas      = /** @type {HTMLCanvasElement} */ (document.getElementById('game-canvas'));
-const ctx         = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
-const renderer    = new Renderer(canvas, ctx);
-const state       = createInitialState();
-const waveManager = new WaveManager();
+const canvas         = /** @type {HTMLCanvasElement} */ (document.getElementById('game-canvas'));
+const ctx            = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+const renderer       = new Renderer(canvas, ctx);
+const state          = createInitialState();
+const waveManager    = new WaveManager();
+const promptManager  = new PromptManager();
 
 /** Apply scene change: update state and drive CSS selector on <body>. */
 function setScene(scene) {
@@ -165,7 +168,8 @@ function startGame() {
   });
 
   Object.assign(state, fresh);
-  waveManager.reset();   // restart waves from Wave 1
+  waveManager.reset();    // restart waves from Wave 1
+  promptManager.reset();  // restart prompt cycle and debounce timers
   setScene(SCENE.PLAYING);
 }
 
@@ -222,6 +226,12 @@ function update(dt, timestamp) {   // eslint-disable-line no-unused-vars
       // Spawn enemies and advance waves (mutates state.enemies, state.wave)
       waveManager.update(dt, state);
 
+      // Check for chord detection → spawn defender units, cycle prompt
+      promptManager.update(dt, state);
+
+      // Tick defender units; remove dead units in-place
+      updateCombat(state, dt);
+
       // Update each live enemy; detect castle breaches.
       // Backwards iteration allows in-place splice without skipping entries.
       // No array allocation — splice modifies state.enemies in place.
@@ -235,10 +245,6 @@ function update(dt, timestamp) {   // eslint-disable-line no-unused-vars
           state.enemies.splice(i, 1);
         }
       }
-
-      // TODO Phase 1B: updateUnits(state, dt)
-      // TODO Phase 1B: updateCombat(state, dt)
-      // TODO Phase 1C: updatePrompts(state, dt)
 
       // Win / lose — defeat checked first; if simultaneous, defeat takes priority
       if (state.lives <= 0)     setScene(SCENE.DEFEAT);
