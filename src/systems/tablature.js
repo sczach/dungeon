@@ -16,20 +16,33 @@
  *   Every 7                           → pendingSpawn = 3 (tier 3)
  *   (Higher tier takes priority at shared multiples.)
  *
+ * ANTI-MASHING
+ * ────────────
+ *   Global summon cooldown: 2000 ms after any successful summon.
+ *   During cooldown pendingSpawn is NOT set (combo still increments).
+ *   Screen unit cap: max 8 player units.  Same rule — combo advances but no spawn.
+ *   Both limits are tracked in state.tablature.summonCooldownEnd
+ *   (performance.now() timestamp; 0 = no active cooldown).
+ *
  * UPDATE MODEL
  * ────────────
  *   Slot state transitions are driven by update() via wall-clock timestamps —
  *   no setTimeouts.  onNote() is called event-driven from keyboard input.
  */
 
-/** White keys available for queue generation (base octave C3–C4). */
-const WHITE_NOTES = ['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3', 'C4'];
-const WHITE_KEYS  = ['a',  's',  'd',  'f',  'g',  'h',  'j',  'k'];
+/** White keys available for queue generation (right-hand layout, C3–B3). */
+const WHITE_NOTES = ['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3'];
+/** Matching display key labels (uppercase, mirrors KEY_TO_NOTE in keyboard.js). */
+const WHITE_KEYS  = ['H',  'J',  'K',  'L',  ';',  "'",  '↵'];
 
 /** How long a hit slot stays visible (green flash) before advancing. */
 const HIT_FLASH_MS  = 200;
 /** How long a miss slot stays visible (red flash) before queue resets. */
 const MISS_RESET_MS = 300;
+/** Cooldown between successful spawns (ms). Anti-mashing mechanic. */
+const SUMMON_COOLDOWN_MS = 2000;
+/** Maximum simultaneous player units. Spawn blocked (but combo continues) at cap. */
+const MAX_PLAYER_UNITS = 8;
 
 export class TablatureSystem {
   /**
@@ -38,21 +51,22 @@ export class TablatureSystem {
    * @param {object} state
    */
   reset(state) {
-    const tab         = state.tablature;
-    tab.queue         = [];
-    tab.combo         = 0;
-    tab.activeIndex   = 0;   // always 0 — leftmost slot is always active
-    tab.pendingSpawn  = null;
+    const tab            = state.tablature;
+    tab.queue            = [];
+    tab.combo            = 0;
+    tab.activeIndex      = 0;   // always 0 — leftmost slot is always active
+    tab.pendingSpawn     = null;
+    tab.summonCooldownEnd = 0;  // performance.now() when cooldown expires; 0 = none
     this._fillQueue(tab);
   }
 
   /**
    * Per-frame update — advance slot transitions by wall-clock time.
    * No allocation in steady state; allocates only on slot transition (≤ once / 200 ms).
-   * @param {number} dt   — delta time in seconds (unused; transitions use performance.now)
+   * @param {number} _dt  — delta time in seconds (unused; transitions use performance.now)
    * @param {object} state
    */
-  update(dt, state) {   // eslint-disable-line no-unused-vars
+  update(_dt, state) {
     const tab = state.tablature;
     if (!tab.queue.length) { this._fillQueue(tab); return; }
 
@@ -70,7 +84,12 @@ export class TablatureSystem {
 
   /**
    * Called by keyboard input on each note press.
-   * Checks the active slot and updates combo / pendingSpawn.
+   * Updates combo, flash status, and (when eligible) pendingSpawn.
+   *
+   * Spawn is blocked — but combo still advances — when:
+   *   • summon cooldown is active (< 2 s since last spawn), OR
+   *   • player unit count has reached MAX_PLAYER_UNITS.
+   *
    * @param {string} note  — pressed note name e.g. "C3"
    * @param {object} state
    */
@@ -88,10 +107,30 @@ export class TablatureSystem {
       slot.statusTime = now;
       tab.combo++;
 
-      // Higher tier takes priority at shared multiples (e.g. 35 = 5×7 → tier 3)
-      if      (tab.combo % 7 === 0) tab.pendingSpawn = 3;
-      else if (tab.combo % 5 === 0) tab.pendingSpawn = 2;
-      else if (tab.combo % 3 === 0) tab.pendingSpawn = 1;
+      // Determine target tier (higher wins at shared multiples, e.g. 35 = 5×7 → tier 3)
+      let spawnTier = 0;
+      if      (tab.combo % 7 === 0) spawnTier = 3;
+      else if (tab.combo % 5 === 0) spawnTier = 2;
+      else if (tab.combo % 3 === 0) spawnTier = 1;
+
+      if (spawnTier > 0) {
+        // Check anti-mashing constraints before setting pendingSpawn
+        const cooldownActive = now < tab.summonCooldownEnd;
+
+        // Count live player units (zero-allocation: indexed loop)
+        let playerCount = 0;
+        const units = state.units;
+        for (let i = 0; i < units.length; i++) {
+          if (units[i].team === 'player') playerCount++;
+        }
+        const atCap = playerCount >= MAX_PLAYER_UNITS;
+
+        if (!cooldownActive && !atCap) {
+          tab.pendingSpawn      = spawnTier;
+          tab.summonCooldownEnd = now + SUMMON_COOLDOWN_MS;
+        }
+        // If blocked: combo/score still advanced (pendingSpawn just not set)
+      }
     } else {
       slot.status     = 'miss';
       slot.statusTime = now;
