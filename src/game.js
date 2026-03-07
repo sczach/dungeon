@@ -17,6 +17,7 @@ import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
 import { WaveManager }   from './systems/waves.js';
 import { updateCombat }  from './systems/combat.js';
 import { PromptManager } from './systems/prompts.js';
+import { keyboardInput } from './input/keyboard.js';
 
 // ─────────────────────────────────────────────
 // Scene identifiers live in src/constants.js.
@@ -90,6 +91,10 @@ const promptManager  = new PromptManager();
 
 /** Apply scene change: update state and drive CSS selector on <body>. */
 function setScene(scene) {
+  // Stop keyboard input when leaving PLAYING so keys don't bleed into other scenes.
+  if (state.scene === SCENE.PLAYING && scene !== SCENE.PLAYING) {
+    keyboardInput.stop();
+  }
   state.scene = scene;
   document.body.dataset.scene = scene;
 }
@@ -176,6 +181,7 @@ function startGame() {
   waveManager.reset();    // restart waves from Wave 1
   promptManager.reset();  // restart prompt cycle and debounce timers
   state.prompt.active = true;
+  keyboardInput.start(state);
   setScene(SCENE.PLAYING);
 }
 
@@ -248,6 +254,10 @@ function update(dt, timestamp) {   // eslint-disable-line no-unused-vars
           state.lives = Math.max(0, state.lives - 1);
         }
         if (!e.alive) {
+          if (!e.reachedCastle) {
+            // Killed by a defender — score scales with enemy toughness
+            state.score += Math.round(e.maxHp * 10);
+          }
           state.enemies.splice(i, 1);
         }
       }

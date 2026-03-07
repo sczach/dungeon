@@ -75,5 +75,13 @@ export function renderHUD(ctx, state, W, H) {
   ctx.textAlign = 'left';
   ctx.fillText(alive ? 'MIC LIVE' : 'NO MIC', dotX + 11, micY);
 
+  // ── Keyboard legend — bottom-right, keyboard mode only ──────────────────
+  if (!state.audio.ready) {
+    ctx.font      = '12px Georgia, serif';
+    ctx.fillStyle = '#5a5040';
+    ctx.textAlign = 'right';
+    ctx.fillText('[1]G  [2]C  [3]D  [4]Em  [5]Am  [6]E', W - PAD, H - PAD - 8);
+  }
+
   ctx.restore();
 }
