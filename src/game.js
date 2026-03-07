@@ -11,19 +11,27 @@
  * Scene states: TITLE | CALIBRATION | PLAYING | VICTORY | DEFEAT
  */
 
-import { Renderer } from './renderer.js';
+import { Renderer }      from './renderer.js';
+import { SCENE }         from './constants.js';
+import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
+import { WaveManager }   from './systems/waves.js';
+import { updateCombat }  from './systems/combat.js';
+import { PromptManager } from './systems/prompts.js';
+
+// ── Debug boot marker ─────────────────────────────────────────────────────────
+// FIRST executable line of the module body.  Static imports are fully resolved
+// before body code runs, so reaching here proves every file in the import graph
+// (renderer, audio, waves, combat, prompts …) loaded without errors.
+// Remove once the blank-screen bug is resolved.
+document.getElementById('boot').textContent = 'JS OK';
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────
-// Scene identifiers (string constants so they
-// appear legibly in DevTools and CSS selectors)
+// Scene identifiers live in src/constants.js.
+// Re-exported here so callers that already
+// import game.js don't need an extra import.
 // ─────────────────────────────────────────────
-export const SCENE = Object.freeze({
-  TITLE:       'TITLE',
-  CALIBRATION: 'CALIBRATION',
-  PLAYING:     'PLAYING',
-  VICTORY:     'VICTORY',
-  DEFEAT:      'DEFEAT',
-});
+export { SCENE };
 
 // ─────────────────────────────────────────────
 // Canonical game state object.
@@ -78,10 +86,12 @@ function createInitialState() {
 // ─────────────────────────────────────────────
 // Bootstrap
 // ─────────────────────────────────────────────
-const canvas   = /** @type {HTMLCanvasElement} */ (document.getElementById('game-canvas'));
-const ctx      = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
-const renderer = new Renderer(canvas, ctx);
-const state    = createInitialState();
+const canvas         = /** @type {HTMLCanvasElement} */ (document.getElementById('game-canvas'));
+const ctx            = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+const renderer       = new Renderer(canvas, ctx);
+const state          = createInitialState();
+const waveManager    = new WaveManager();
+const promptManager  = new PromptManager();
 
 /** Apply scene change: update state and drive CSS selector on <body>. */
 function setScene(scene) {
@@ -123,17 +133,21 @@ function wireButtons() {
   const $ = (id) => document.getElementById(id);
 
   // TITLE → CALIBRATION
-  $('btn-start')?.addEventListener('click', () => {
+  // startCapture() MUST be called inside the click handler (user gesture)
+  // so that iOS Safari allows AudioContext creation and mic access.
+  $('btn-start')?.addEventListener('click', async () => {
     setScene(SCENE.CALIBRATION);
-    // TODO Phase 1A: start mic capture here
+    await startCapture(state);
   });
 
-  // TITLE → PLAYING (practice skips calibration for now)
-  $('btn-practice')?.addEventListener('click', () => {
+  // TITLE → PLAYING (practice mode — skips calibration, mic optional)
+  $('btn-practice')?.addEventListener('click', async () => {
+    // Still attempt capture so audio works in practice; silence errors.
+    startCapture(state).catch(() => {});
     startGame();
   });
 
-  // CALIBRATION → PLAYING (enabled by audio subsystem once floor is set)
+  // CALIBRATION → PLAYING (button enabled by updateCalibration after ~1.5 s)
   $('btn-calibration-done')?.addEventListener('click', () => {
     startGame();
   });
@@ -158,6 +172,8 @@ function startGame() {
   });
 
   Object.assign(state, fresh);
+  waveManager.reset();    // restart waves from Wave 1
+  promptManager.reset();  // restart prompt cycle and debounce timers
   setScene(SCENE.PLAYING);
 }
 
@@ -193,7 +209,7 @@ function loop(timestamp) {
  * @param {number} dt         — delta time in seconds
  * @param {number} timestamp  — raw rAF timestamp (ms)
  */
-function update(dt, timestamp) {
+function update(dt, timestamp) {   // eslint-disable-line no-unused-vars
   if (state.paused) return;
 
   switch (state.scene) {
@@ -202,23 +218,41 @@ function update(dt, timestamp) {
       break;
 
     case SCENE.CALIBRATION:
-      // TODO Phase 1A: poll audio subsystem for noise-floor calibration progress
+      updateCalibration(state);
       break;
 
     case SCENE.PLAYING:
       state.time       += dt;
       state.frameCount += 1;
 
-      // TODO Phase 1A: updateAudio(state, dt)
-      // TODO Phase 1B: updateWaves(state, dt)
-      // TODO Phase 1B: updateEnemies(state, dt)
-      // TODO Phase 1B: updateUnits(state, dt)
-      // TODO Phase 1B: updateCombat(state, dt)
-      // TODO Phase 1C: updatePrompts(state, dt)
+      updateAudio(state, dt);
 
-      // Win / lose checks (placeholder thresholds)
-      if (state.lives <= 0)  setScene(SCENE.DEFEAT);
-      if (state.wave  >= 10 && state.enemies.length === 0) setScene(SCENE.VICTORY);
+      // Spawn enemies and advance waves (mutates state.enemies, state.wave)
+      waveManager.update(dt, state);
+
+      // Check for chord detection → spawn defender units, cycle prompt
+      promptManager.update(dt, state);
+
+      // Tick defender units; remove dead units in-place
+      updateCombat(state, dt);
+
+      // Update each live enemy; detect castle breaches.
+      // Backwards iteration allows in-place splice without skipping entries.
+      // No array allocation — splice modifies state.enemies in place.
+      for (let i = state.enemies.length - 1; i >= 0; i--) {
+        const e = state.enemies[i];
+        e.update(dt, state.canvas.width, state.canvas.height);
+        if (e.reachedCastle) {
+          state.lives = Math.max(0, state.lives - 1);
+        }
+        if (!e.alive) {
+          state.enemies.splice(i, 1);
+        }
+      }
+
+      // Win / lose — defeat checked first; if simultaneous, defeat takes priority
+      if (state.lives <= 0)     setScene(SCENE.DEFEAT);
+      if (waveManager.complete) setScene(SCENE.VICTORY);
       break;
 
     case SCENE.VICTORY:
@@ -227,6 +261,21 @@ function update(dt, timestamp) {
       break;
   }
 }
+
+// ─────────────────────────────────────────────
+// Page visibility — pause AudioContext on hide
+// to avoid battery drain on mobile.
+// ─────────────────────────────────────────────
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    state.paused = true;
+  } else {
+    state.paused = false;
+    // AudioContext may have been suspended by the browser on hide;
+    // unlockAudioContext() (already wired in startCapture) will
+    // resume it on the next user gesture.
+  }
+});
 
 // ─────────────────────────────────────────────
 // Init

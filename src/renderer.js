@@ -9,7 +9,8 @@
  *   Coordinate system: logical pixels (ctx already scaled for DPR by game.js).
  */
 
-import { SCENE } from './game.js';
+import { SCENE }         from './constants.js';
+import { CAMPFIRE_PATH } from './systems/path.js';
 
 // ─────────────────────────────────────────────
 // Palette (mirrors CSS variables; kept in sync
@@ -25,6 +26,16 @@ const CLR = Object.freeze({
   MUTED:    '#7a7060',
   PATH:     '#1a1a28',
   GRASS:    '#0d1a0d',
+});
+
+/** One distinct colour per unit type. */
+const UNIT_COLOURS = Object.freeze({
+  Shield:    '#8888ff',   // blue-purple — defensive
+  Archer:    '#44cc44',   // green        — ranged
+  Swordsman: '#ffaa44',   // orange       — heavy melee
+  Mage:      '#cc44ff',   // purple       — AoE magic
+  Healer:    '#44ffcc',   // teal         — support
+  Lancer:    '#ff6644',   // red-orange   — fast attacker
 });
 
 export class Renderer {
@@ -209,6 +220,7 @@ export class Renderer {
     this._drawUnits(state);
     this._drawEnemies(state);
     this._drawAudioFeedback(state, W, H);
+    this._drawPrompt(state, W, H);
   }
 
   /** Render the Campfire map (straight path placeholder). */
@@ -219,10 +231,10 @@ export class Renderer {
     ctx.fillStyle = CLR.GRASS;
     ctx.fillRect(0, 0, W, H);
 
-    // Single straight path (Campfire map)
-    // TODO Phase 1B: import path coords from src/systems/path.js
-    const pathY  = H * 0.5;
-    const pathHH = H * 0.08;  // half-height of path strip
+    // Single straight path (Campfire map) — derive Y from actual path data
+    // so the visual strip always aligns with where enemies walk.
+    const pathY  = CAMPFIRE_PATH[0].y * H;  // fractional y → logical pixels
+    const pathHH = H * 0.08;                 // half-height of path strip
 
     ctx.fillStyle = CLR.PATH;
     ctx.fillRect(0, pathY - pathHH, W, pathHH * 2);
@@ -263,18 +275,49 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** Render defender units (placeholder circles). */
+  /** Render defender units — coloured circle per type + faint range ring. */
   _drawUnits(state) {
     const ctx = this.ctx;
     for (const unit of state.units) {
+      const colour = UNIT_COLOURS[unit.type] ?? CLR.ACCENT2;
+      const r      = unit.radius ?? 12;
+
       ctx.save();
+
+      // Range ring (30 % opacity)
+      if (unit.range) {
+        ctx.beginPath();
+        ctx.arc(unit.x, unit.y, unit.range, 0, Math.PI * 2);
+        ctx.strokeStyle = colour;
+        ctx.lineWidth   = 1;
+        ctx.globalAlpha = 0.3;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      // Body circle
       ctx.beginPath();
-      ctx.arc(unit.x, unit.y, unit.radius ?? 12, 0, Math.PI * 2);
-      ctx.fillStyle   = CLR.ACCENT2;
+      ctx.arc(unit.x, unit.y, r, 0, Math.PI * 2);
+      ctx.fillStyle   = colour;
       ctx.strokeStyle = CLR.TEXT;
       ctx.lineWidth   = 2;
       ctx.fill();
       ctx.stroke();
+
+      // HP bar — only shown when damaged
+      if (unit.maxHp && unit.hp !== undefined && unit.hp < unit.maxHp) {
+        const bw  = r * 2.5;
+        const bh  = 3;
+        const bx  = unit.x - bw / 2;
+        const by  = unit.y - r - 8;
+        const pct = Math.max(0, unit.hp / unit.maxHp);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = '#44ff88';
+        ctx.fillRect(bx, by, bw * pct, bh);
+      }
+
       ctx.restore();
     }
   }
@@ -346,6 +389,36 @@ export class Renderer {
     ctx.fillRect(x + 10, y + 40, 140 * Math.min(confidence, 1), 8);
 
     ctx.restore();
+  }
+
+  // ─────────────────────────────────────────
+  // Prompt overlay — chord to play next
+  // ─────────────────────────────────────────
+
+  /**
+   * Draw the current chord prompt centred at the bottom of the screen.
+   * Visible whenever state.prompt.active is true and a chord is set.
+   *
+   * Layout (from bottom):
+   *   H - 50  — subtitle "play this chord to spawn a unit" (16 px)
+   *   H - 90  — chord name in bold 48 px (vertically centred at that y)
+   */
+  _drawPrompt(state, W, H) {
+    if (!state.prompt.active || !state.prompt.chord) return;
+
+    // Chord name
+    this._text(state.prompt.chord, W / 2, H - 90, {
+      fill:  CLR.ACCENT,
+      font:  'bold 48px Georgia, serif',
+      align: 'center',
+    });
+
+    // Subtitle
+    this._text('play this chord to spawn a unit', W / 2, H - 50, {
+      fill:  CLR.MUTED,
+      font:  '16px Georgia, serif',
+      align: 'center',
+    });
   }
 
   // ─────────────────────────────────────────
