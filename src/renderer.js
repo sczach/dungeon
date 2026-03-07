@@ -9,7 +9,8 @@
  *   Coordinate system: logical pixels (ctx already scaled for DPR by game.js).
  */
 
-import { SCENE } from './game.js';
+import { SCENE }         from './game.js';
+import { CAMPFIRE_PATH } from './systems/path.js';
 
 // ─────────────────────────────────────────────
 // Palette (mirrors CSS variables; kept in sync
@@ -219,10 +220,10 @@ export class Renderer {
     ctx.fillStyle = CLR.GRASS;
     ctx.fillRect(0, 0, W, H);
 
-    // Single straight path (Campfire map)
-    // TODO Phase 1B: import path coords from src/systems/path.js
-    const pathY  = H * 0.5;
-    const pathHH = H * 0.08;  // half-height of path strip
+    // Single straight path (Campfire map) — derive Y from actual path data
+    // so the visual strip always aligns with where enemies walk.
+    const pathY  = CAMPFIRE_PATH[0].y * H;  // fractional y → logical pixels
+    const pathHH = H * 0.08;                 // half-height of path strip
 
     ctx.fillStyle = CLR.PATH;
     ctx.fillRect(0, pathY - pathHH, W, pathHH * 2);

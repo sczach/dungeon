@@ -11,8 +11,9 @@
  * Scene states: TITLE | CALIBRATION | PLAYING | VICTORY | DEFEAT
  */
 
-import { Renderer } from './renderer.js';
+import { Renderer }    from './renderer.js';
 import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
+import { WaveManager } from './systems/waves.js';
 
 // ─────────────────────────────────────────────
 // Scene identifiers (string constants so they
@@ -79,10 +80,11 @@ function createInitialState() {
 // ─────────────────────────────────────────────
 // Bootstrap
 // ─────────────────────────────────────────────
-const canvas   = /** @type {HTMLCanvasElement} */ (document.getElementById('game-canvas'));
-const ctx      = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
-const renderer = new Renderer(canvas, ctx);
-const state    = createInitialState();
+const canvas      = /** @type {HTMLCanvasElement} */ (document.getElementById('game-canvas'));
+const ctx         = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+const renderer    = new Renderer(canvas, ctx);
+const state       = createInitialState();
+const waveManager = new WaveManager();
 
 /** Apply scene change: update state and drive CSS selector on <body>. */
 function setScene(scene) {
@@ -163,6 +165,7 @@ function startGame() {
   });
 
   Object.assign(state, fresh);
+  waveManager.reset();   // restart waves from Wave 1
   setScene(SCENE.PLAYING);
 }
 
@@ -215,15 +218,31 @@ function update(dt, timestamp) {   // eslint-disable-line no-unused-vars
       state.frameCount += 1;
 
       updateAudio(state, dt);
-      // TODO Phase 1B: updateWaves(state, dt)
-      // TODO Phase 1B: updateEnemies(state, dt)
+
+      // Spawn enemies and advance waves (mutates state.enemies, state.wave)
+      waveManager.update(dt, state);
+
+      // Update each live enemy; detect castle breaches.
+      // Backwards iteration allows in-place splice without skipping entries.
+      // No array allocation — splice modifies state.enemies in place.
+      for (let i = state.enemies.length - 1; i >= 0; i--) {
+        const e = state.enemies[i];
+        e.update(dt, state.canvas.width, state.canvas.height);
+        if (e.reachedCastle) {
+          state.lives = Math.max(0, state.lives - 1);
+        }
+        if (!e.alive) {
+          state.enemies.splice(i, 1);
+        }
+      }
+
       // TODO Phase 1B: updateUnits(state, dt)
       // TODO Phase 1B: updateCombat(state, dt)
       // TODO Phase 1C: updatePrompts(state, dt)
 
-      // Win / lose checks (placeholder thresholds)
-      if (state.lives <= 0)  setScene(SCENE.DEFEAT);
-      if (state.wave  >= 10 && state.enemies.length === 0) setScene(SCENE.VICTORY);
+      // Win / lose — defeat checked first; if simultaneous, defeat takes priority
+      if (state.lives <= 0)     setScene(SCENE.DEFEAT);
+      if (waveManager.complete) setScene(SCENE.VICTORY);
       break;
 
     case SCENE.VICTORY:
