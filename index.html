@@ -9,16 +9,6 @@
 </head>
 <body>
 
-  <!-- ── Debug boot marker ─────────────────────────────────────────────────────
-       Visible immediately when HTML renders, before any JavaScript executes.
-       game.js overwrites this to 'JS OK' as its very first executable line,
-       proving the entire module graph loaded without errors.
-         'BOOT OK' visible but 'JS OK' never appears → a module failed to load.
-         Neither visible                              → HTML itself is broken.
-       Remove once the blank-screen bug is resolved.
-  ─────────────────────────────────────────────────────────────────────────── -->
-  <div id="boot" style="color:lime;font-size:18px;font-family:monospace;position:fixed;top:8px;left:8px;z-index:9999;pointer-events:none;text-shadow:0 0 4px #000">BOOT OK</div>
-
   <!-- Primary render surface -->
   <canvas id="game-canvas"></canvas>
 
@@ -81,8 +71,6 @@
   ─────────────────────────────────────────────────────────────────────────── -->
   <script>
     function _showError(msg) {
-      const boot = document.getElementById('boot');
-      if (boot) boot.remove();
       document.body.innerHTML =
         '<pre id="err" style="color:red;background:#111;padding:20px;white-space:pre-wrap;font-size:14px;font-family:monospace">' +
         msg + '</pre>';

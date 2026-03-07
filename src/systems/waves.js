@@ -99,9 +99,10 @@ export class WaveManager {
 
     // ── Initialise Wave 1 on the first call ──────────────────────────────────
     if (state.wave === 0) {
-      state.wave       = 1;
-      this._spawned    = 0;
-      this._spawnTimer = 0;  // spawn first enemy this tick
+      state.wave         = 1;
+      this._spawned      = 0;
+      this._spawnTimer   = 0;  // spawn first enemy this tick
+      state.waveAnnounce = performance.now();
     }
 
     const waveIdx = state.wave - 1;
@@ -134,8 +135,9 @@ export class WaveManager {
       if (state.wave < WAVES.length) {
         // Advance to next wave — first enemy spawns on the very next tick
         state.wave++;
-        this._spawned    = 0;
-        this._spawnTimer = 0;
+        this._spawned      = 0;
+        this._spawnTimer   = 0;
+        state.waveAnnounce = performance.now();
       } else {
         // All 10 waves cleared
         this.complete = true;

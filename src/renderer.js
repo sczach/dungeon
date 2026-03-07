@@ -11,6 +11,7 @@
 
 import { SCENE }         from './constants.js';
 import { CAMPFIRE_PATH } from './systems/path.js';
+import { renderHUD }     from './ui/hud.js';
 
 // ─────────────────────────────────────────────
 // Palette (mirrors CSS variables; kept in sync
@@ -219,8 +220,28 @@ export class Renderer {
     this._drawMap(state, W, H);
     this._drawUnits(state);
     this._drawEnemies(state);
-    this._drawAudioFeedback(state, W, H);
-    this._drawPrompt(state, W, H);
+    this._drawWaveAnnouncement(state, W, H);
+    renderHUD(this.ctx, state, W, H);
+  }
+
+  /**
+   * Fade "WAVE N" in 80 px white text over 2 seconds.
+   * Triggered by state.waveAnnounce (performance.now() timestamp).
+   */
+  _drawWaveAnnouncement(state, W, H) {
+    if (!state.waveAnnounce || state.wave <= 0) return;
+    const elapsed = performance.now() - state.waveAnnounce;
+    if (elapsed >= 2000) return;
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha  = 1 - elapsed / 2000;
+    ctx.font         = 'bold 80px Georgia, serif';
+    ctx.fillStyle    = '#ffffff';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`WAVE ${state.wave}`, W / 2, H / 2);
+    ctx.restore();
   }
 
   /** Render the Campfire map (straight path placeholder). */
@@ -350,75 +371,6 @@ export class Renderer {
       }
       ctx.restore();
     }
-  }
-
-  /**
-   * Visualise detected chord / audio confidence.
-   * Drawn as a small indicator in the lower-left corner.
-   * Phase 1C will expand this with the prompt system.
-   */
-  _drawAudioFeedback(state, W, H) {
-    const { detectedChord, confidence } = state.audio;
-    if (!detectedChord) return;
-
-    const ctx  = this.ctx;
-    const pad  = 20;
-    const x    = pad;
-    const y    = H - pad - 60;
-
-    ctx.save();
-    ctx.globalAlpha = 0.85;
-
-    // Background pill
-    ctx.fillStyle   = CLR.SURFACE;
-    ctx.beginPath();
-    ctx.roundRect(x, y, 160, 60, 8);
-    ctx.fill();
-
-    // Chord name
-    this._text(detectedChord, x + 50, y + 22, {
-      fill:  CLR.ACCENT,
-      font:  'bold 20px Georgia, serif',
-      align: 'center',
-    });
-
-    // Confidence bar
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fillRect(x + 10, y + 40, 140, 8);
-    ctx.fillStyle = CLR.ACCENT2;
-    ctx.fillRect(x + 10, y + 40, 140 * Math.min(confidence, 1), 8);
-
-    ctx.restore();
-  }
-
-  // ─────────────────────────────────────────
-  // Prompt overlay — chord to play next
-  // ─────────────────────────────────────────
-
-  /**
-   * Draw the current chord prompt centred at the bottom of the screen.
-   * Visible whenever state.prompt.active is true and a chord is set.
-   *
-   * Layout (from bottom):
-   *   H - 50  — subtitle "play this chord to spawn a unit" (16 px)
-   *   H - 90  — chord name in bold 48 px (vertically centred at that y)
-   */
-  _drawPrompt(state, W, H) {
-    if (!state.prompt.active || !state.prompt.chord) return;
-
-    // Chord name
-    this._text(state.prompt.chord, W / 2, H - 90, {
-      fill:  CLR.ACCENT,
-      font:  'bold 48px Georgia, serif',
-      align: 'center',
-    });
-
-    // Subtitle
-    this._text('play this chord to spawn a unit', W / 2, H - 50, {
-      fill:  CLR.MUTED,
-      font:  '16px Georgia, serif',
-      align: 'center',
-    });
   }
 
   // ─────────────────────────────────────────
