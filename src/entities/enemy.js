@@ -39,6 +39,8 @@ export class Enemy {
 
     this.alive         = true;
     this.reachedCastle = false;
+
+    console.log(`[Enemy spawn] hp=${this.hp} speed=${this.speed} radius=${this.radius} pathT=${this.pathT} x=${this.x} y=${this.y}`);
   }
 
   /**
