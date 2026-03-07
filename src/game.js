@@ -18,6 +18,14 @@ import { WaveManager }   from './systems/waves.js';
 import { updateCombat }  from './systems/combat.js';
 import { PromptManager } from './systems/prompts.js';
 
+// ── Debug boot marker ─────────────────────────────────────────────────────────
+// FIRST executable line of the module body.  Static imports are fully resolved
+// before body code runs, so reaching here proves every file in the import graph
+// (renderer, audio, waves, combat, prompts …) loaded without errors.
+// Remove once the blank-screen bug is resolved.
+document.getElementById('boot').textContent = 'JS OK';
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─────────────────────────────────────────────
 // Scene identifiers live in src/constants.js.
 // Re-exported here so callers that already

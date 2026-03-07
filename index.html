@@ -9,6 +9,16 @@
 </head>
 <body>
 
+  <!-- ── Debug boot marker ─────────────────────────────────────────────────────
+       Visible immediately when HTML renders, before any JavaScript executes.
+       game.js overwrites this to 'JS OK' as its very first executable line,
+       proving the entire module graph loaded without errors.
+         'BOOT OK' visible but 'JS OK' never appears → a module failed to load.
+         Neither visible                              → HTML itself is broken.
+       Remove once the blank-screen bug is resolved.
+  ─────────────────────────────────────────────────────────────────────────── -->
+  <div id="boot" style="color:lime;font-size:18px;font-family:monospace;position:fixed;top:8px;left:8px;z-index:9999;pointer-events:none;text-shadow:0 0 4px #000">BOOT OK</div>
+
   <!-- Primary render surface -->
   <canvas id="game-canvas"></canvas>
 
@@ -59,21 +69,45 @@
 
   </div><!-- /#overlay -->
 
-  <!-- Error boundary: surfaces silent module load / runtime errors on-screen.
-       Must run before game.js so errors during module evaluation are caught. -->
+  <!-- Error boundary ──────────────────────────────────────────────────────────
+       Hardened to catch four failure modes:
+         1. Runtime JS errors        → window 'error' event
+         2. Unhandled promise rejects → window 'unhandledrejection' event
+         3. Module fetch failure (404)→ 'error' event on the <script> element
+            (browsers do NOT reliably promote this to window.onerror)
+         4. Error objects in reason  → expanded to show full stack trace
+
+       Must execute before game.js is fetched.
+  ─────────────────────────────────────────────────────────────────────────── -->
   <script>
-    window.addEventListener('error', e => {
+    function _showError(msg) {
+      const boot = document.getElementById('boot');
+      if (boot) boot.remove();
       document.body.innerHTML =
-        `<pre style="color:red;padding:20px;white-space:pre-wrap">${e.message}\n${e.filename}:${e.lineno}</pre>`;
+        '<pre id="err" style="color:red;background:#111;padding:20px;white-space:pre-wrap;font-size:14px;font-family:monospace">' +
+        msg + '</pre>';
+    }
+
+    window.addEventListener('error', function(e) {
+      // Ignore cross-origin script errors (e.message === 'Script error.')
+      if (!e.message || e.message === 'Script error.') return;
+      _showError(e.message + '\n' + e.filename + ':' + e.lineno);
     });
-    window.addEventListener('unhandledrejection', e => {
-      document.body.innerHTML =
-        `<pre style="color:red;padding:20px;white-space:pre-wrap">${e.reason}</pre>`;
+
+    window.addEventListener('unhandledrejection', function(e) {
+      var r = e.reason;
+      var msg = (r instanceof Error)
+        ? r.message + '\n' + (r.stack || '')
+        : String(r);
+      _showError('Unhandled rejection:\n' + msg);
     });
   </script>
 
-  <!-- Entry point — type="module" gives us ES module scope and deferred execution -->
-  <script type="module" src="src/game.js"></script>
+  <!-- Entry point — type="module" gives us ES module scope and deferred execution.
+       onerror fires when this specific script file (or any of its static imports)
+       fails to fetch — browsers do NOT forward these to window.onerror reliably. -->
+  <script type="module" src="src/game.js"
+    onerror="_showError('Module load failed — check DevTools Network tab for 404s')"></script>
 
 </body>
 </html>
