@@ -26,7 +26,7 @@ const CLR = Object.freeze({
   TEXT:     '#f0ead6',
   MUTED:    '#7a7060',
   PATH:     '#1a1a28',
-  GRASS:    '#0d1a0d',
+  GRASS:    '#1a3d1a',
 });
 
 /** One distinct colour per unit type. */
