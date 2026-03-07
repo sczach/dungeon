@@ -9,15 +9,23 @@
  *
  * TIER STATS
  * ──────────
- *   Tier 1 — 30 hp, 8 dmg, 60 px/s, 50 px range,  1.0 atk/s, r=12
+ *   Tier 1 — 30 hp,  8 dmg, 60 px/s, 50 px range, 1.0 atk/s, r=12
  *   Tier 2 — 60 hp, 15 dmg, 45 px/s, 60 px range, 0.8 atk/s, r=16
  *   Tier 3 — 120 hp, 25 dmg, 35 px/s, 70 px range, 0.6 atk/s, r=20
  *
  * MARCHING AI  (update method)
  * ────────────────────────────
- *   1. Find nearest enemy unit within range → attack if cooldown ready
- *   2. If no enemy in range, check target base distance → attack base
- *   3. Otherwise → march one step toward enemy side
+ *   • If stunned: freeze entirely (marching = false, no attack)
+ *   • If enemy unit in range: set marching = false, attack if cooldown ready
+ *   • If target base in range: set marching = false, attack base
+ *   • Otherwise: set marching = true, advance one step toward enemy side
+ *
+ * ATTACK SEQUENCE  (assigned externally by AttackSequenceSystem)
+ * ───────────────
+ *   unit.attackSeq         — string[] note names the player must press to trigger effect
+ *   unit.attackSeqProgress — index of next note to match (0 = full sequence pending)
+ *   unit.stunned           — true while stun effect is active
+ *   unit.stunTimer         — seconds of stun remaining
  *
  * ZERO-ALLOCATION hot path
  * ─────────────────────────
@@ -25,21 +33,13 @@
  *   No array methods (filter/sort/map) are called.
  */
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tier registry — index 1-based (index 0 is a guard entry)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** @type {Array<null|{hp:number,damage:number,speed:number,range:number,attackSpeed:number,radius:number}>} */
+/** @type {Array<null|{hp,damage,speed,range,attackSpeed,radius}>} */
 const TIER_STATS = [
-  null,   // guard — tiers are 1-indexed
+  null,
   { hp:  30, damage:  8, speed: 60, range: 50, attackSpeed: 1.0, radius: 12 },
   { hp:  60, damage: 15, speed: 45, range: 60, attackSpeed: 0.8, radius: 16 },
   { hp: 120, damage: 25, speed: 35, range: 70, attackSpeed: 0.6, radius: 20 },
 ];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Entity class
-// ─────────────────────────────────────────────────────────────────────────────
 
 export class Unit {
   /**
@@ -56,15 +56,26 @@ export class Unit {
     this.x     = x;
     this.y     = y;
 
-    this.hp           = stats.hp;
-    this.maxHp        = stats.hp;
-    this.damage       = stats.damage;
-    this.speed        = stats.speed;
-    this.range        = stats.range;
-    this.attackSpeed  = stats.attackSpeed;
-    this.radius       = stats.radius;
+    this.hp             = stats.hp;
+    this.maxHp          = stats.hp;
+    this.damage         = stats.damage;
+    this.speed          = stats.speed;
+    this.range          = stats.range;
+    this.attackSpeed    = stats.attackSpeed;
+    this.radius         = stats.radius;
     this.attackCooldown = 0;
-    this.alive        = true;
+    this.alive          = true;
+
+    // ── Marching state (fix: explicitly tracked so renderer can animate) ──
+    /** True only while actively advancing toward the enemy side. */
+    this.marching       = true;
+
+    // ── Attack sequence (assigned by AttackSequenceSystem on spawn) ────────
+    /** @type {string[]|null} */
+    this.attackSeq         = null;
+    this.attackSeqProgress = 0;
+    this.stunned           = false;
+    this.stunTimer         = 0;
   }
 
   /**
@@ -81,9 +92,13 @@ export class Unit {
   update(dt, allUnits, bases) {
     if (!this.alive) return;
 
-    if (this.attackCooldown > 0) {
-      this.attackCooldown -= dt;
+    // ── Stun: freeze entirely ─────────────────────────────────────────────
+    if (this.stunned) {
+      this.marching = false;
+      return;
     }
+
+    if (this.attackCooldown > 0) this.attackCooldown -= dt;
 
     const dir        = this.team === 'player' ? 1 : -1;
     const targetBase = this.team === 'player' ? bases.enemy : bases.player;
@@ -106,13 +121,13 @@ export class Unit {
     }
 
     if (nearestEnemy !== null) {
-      // ── Attack nearest enemy unit ────────────────────────────────────────
+      // ── Enemy in range: hold position and attack ─────────────────────────
+      this.marching = false;
       if (this.attackCooldown <= 0) {
         nearestEnemy.hp -= this.damage;
         if (nearestEnemy.hp <= 0) nearestEnemy.alive = false;
         this.attackCooldown = 1 / this.attackSpeed;
       }
-      // Hold position while combat is active
     } else {
       // ── No unit in range — check target base ─────────────────────────────
       const bx  = targetBase.x - this.x;
@@ -120,14 +135,16 @@ export class Unit {
       const bd2 = bx * bx + by * by;
 
       if (bd2 <= r2) {
-        // Attack base
+        // At base: stop and attack
+        this.marching = false;
         if (this.attackCooldown <= 0) {
           targetBase.takeDamage(this.damage);
           this.attackCooldown = 1 / this.attackSpeed;
         }
       } else {
-        // March toward enemy side
-        this.x += dir * this.speed * dt;
+        // Clear path ahead — march
+        this.marching  = true;
+        this.x        += dir * this.speed * dt;
       }
     }
   }

@@ -30,24 +30,18 @@ const CLR = Object.freeze({
   MUTED:   '#7a7060',
 });
 
-// ─────────────────────────────────────────────
-// Unit team colours
-// ─────────────────────────────────────────────
-const TEAM_COLOUR = Object.freeze({
-  player: '#5b8fff',   // blue
-  enemy:  '#ff4444',   // red
-});
+const TEAM_COLOUR = Object.freeze({ player: '#5b8fff', enemy: '#ff4444' });
+const TEAM_STROKE = Object.freeze({ player: '#aac8ff', enemy: '#ff9988' });
 
-const TEAM_STROKE = Object.freeze({
-  player: '#aac8ff',
-  enemy:  '#ff9988',
+// Note → QWERTY key label (base octave, for sequence pill display)
+const NOTE_TO_KEY = Object.freeze({
+  'C3': 'A', 'D3': 'S', 'E3': 'D', 'F3': 'F',
+  'G3': 'G', 'A3': 'H', 'B3': 'J', 'C4': 'K',
+  'C#3': 'W', 'D#3': 'E', 'F#3': 'T', 'G#3': 'Y', 'A#3': 'U',
 });
 
 export class Renderer {
-  /**
-   * @param {HTMLCanvasElement}        canvas
-   * @param {CanvasRenderingContext2D} ctx
-   */
+  /** @param {HTMLCanvasElement} canvas  @param {CanvasRenderingContext2D} ctx */
   constructor(canvas, ctx) {
     this.canvas      = canvas;
     this.ctx         = ctx;
@@ -55,16 +49,14 @@ export class Renderer {
   }
 
   // ─────────────────────────────────────────
-  // Public entry point — called every frame
+  // Public
   // ─────────────────────────────────────────
 
-  /** @param {object} state — canonical game state (read-only) */
+  /** @param {object} state */
   draw(state) {
     const { width: W, height: H } = state.canvas;
     if (W === 0 || H === 0) return;
-
     this._clear(W, H);
-
     switch (state.scene) {
       case SCENE.TITLE:       this._drawTitle(state, W, H);       break;
       case SCENE.CALIBRATION: this._drawCalibration(state, W, H); break;
@@ -90,9 +82,7 @@ export class Renderer {
     ctx.font         = opts.font  ?? '16px Georgia, serif';
     ctx.textAlign    = opts.align ?? 'center';
     ctx.textBaseline = 'middle';
-    opts.maxWidth
-      ? ctx.fillText(text, x, y, opts.maxWidth)
-      : ctx.fillText(text, x, y);
+    opts.maxWidth ? ctx.fillText(text, x, y, opts.maxWidth) : ctx.fillText(text, x, y);
     ctx.restore();
   }
 
@@ -103,40 +93,31 @@ export class Renderer {
   _drawTitle(state, W, H) {
     this._titlePhase += 0.008;
     const t  = this._titlePhase;
-    const gx = W / 2;
-    const gy = H * 0.42;
-
+    const gx = W / 2, gy = H * 0.42;
     const glow = this.ctx.createRadialGradient(gx, gy, 0, gx, gy, W * 0.55);
-    glow.addColorStop(0,   `rgba(232, 160, 48, ${0.07 + 0.03 * Math.sin(t)})`);
-    glow.addColorStop(0.5, `rgba(91, 143, 255, ${0.04 + 0.02 * Math.sin(t * 1.3)})`);
-    glow.addColorStop(1,   'rgba(10, 10, 15, 0)');
+    glow.addColorStop(0,   `rgba(232,160,48,${0.07 + 0.03 * Math.sin(t)})`);
+    glow.addColorStop(0.5, `rgba(91,143,255,${0.04 + 0.02 * Math.sin(t * 1.3)})`);
+    glow.addColorStop(1,   'rgba(10,10,15,0)');
     this.ctx.fillStyle = glow;
     this.ctx.fillRect(0, 0, W, H);
-
     this._drawStars(W, H, t);
   }
 
   _drawStars(W, H, t) {
-    const ctx   = this.ctx;
-    const count = 120;
-    let seed    = 0xdeadbeef;
-    const rand  = () => {
+    const ctx = this.ctx;
+    let seed  = 0xdeadbeef;
+    const rand = () => {
       seed = (seed ^ (seed >>> 15)) * 0x85ebca77;
       seed = (seed ^ (seed >>> 13)) * 0xc2b2ae3d;
       seed ^= (seed >>> 16);
       return (seed >>> 0) / 0xffffffff;
     };
-
     ctx.save();
-    for (let i = 0; i < count; i++) {
-      const x     = rand() * W;
-      const y     = rand() * H;
-      const size  = rand() * 1.5 + 0.3;
-      const phase = rand() * Math.PI * 2;
-      const alpha = 0.3 + 0.5 * Math.sin(t * (0.5 + rand()) + phase);
+    for (let i = 0; i < 120; i++) {
+      const alpha = 0.3 + 0.5 * Math.sin(t * (0.5 + rand()) + rand() * Math.PI * 2);
       ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(240, 234, 214, ${alpha.toFixed(3)})`;
+      ctx.arc(rand() * W, rand() * H, rand() * 1.5 + 0.3, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(240,234,214,${alpha.toFixed(3)})`;
       ctx.fill();
     }
     ctx.restore();
@@ -153,26 +134,20 @@ export class Renderer {
     this.ctx.fillStyle = vig;
     this.ctx.fillRect(0, 0, W, H);
 
-    const waveY   = H * 0.72;
-    const waveW   = Math.min(W * 0.7, 500);
-    const waveH   = 60;
-    const waveX   = (W - waveW) / 2;
-    const samples = 128;
-    const t       = performance.now() / 1000;
-    const data    = state.audio.waveformData;
-
+    const waveY = H * 0.72, waveW = Math.min(W * 0.7, 500);
+    const waveX = (W - waveW) / 2, samples = 128;
+    const t = performance.now() / 1000, data = state.audio.waveformData;
     this.ctx.save();
     this.ctx.strokeStyle = CLR.ACCENT2;
     this.ctx.lineWidth   = 2;
     this.ctx.globalAlpha = 0.6;
     this.ctx.beginPath();
-
     for (let i = 0; i < samples; i++) {
       const x   = waveX + (i / (samples - 1)) * waveW;
       const amp = (data && data.length)
         ? data[Math.floor((i / samples) * data.length)]
         : 0.15 * Math.sin(t * 3 + i * 0.25) * Math.sin(i * 0.08);
-      const y = waveY + amp * waveH;
+      const y = waveY + amp * 60;
       i === 0 ? this.ctx.moveTo(x, y) : this.ctx.lineTo(x, y);
     }
     this.ctx.stroke();
@@ -181,140 +156,181 @@ export class Renderer {
 
   // ─────────────────────────────────────────
   // Scene: PLAYING
+  // Draw order matters for z-layering:
+  //   tablature > map > bases > units > sequences > HUD
   // ─────────────────────────────────────────
 
   _drawPlaying(state, W, H) {
+    this._drawTablature(state, W, H);       // top of screen — drawn first (behind nothing)
     this._drawMap(W, H);
     this._drawBases(state, W, H);
     this._drawUnits(state);
+    this._drawEnemySequences(state, W, H);
     this._drawWaveAnnouncement(state, W, H);
     renderHUD(this.ctx, state, W, H);
   }
 
-  /** Grass field + perspective combat strip. */
-  _drawMap(W, H) {
-    const ctx  = this.ctx;
-    const laneY = LANE_Y * H;
-    const laneH = LANE_HEIGHT * H;
-    const top   = laneY - laneH / 2;
-    const bot   = laneY + laneH / 2;
-
-    // Dark green grass fills entire canvas
-    ctx.fillStyle = CLR.GRASS;
-    ctx.fillRect(0, 0, W, H);
-
-    // Combat strip — trapezoid slightly wider at the bottom (perspective hint)
-    const margin = W * 0.03;
-    ctx.fillStyle = CLR.STRIP;
-    ctx.beginPath();
-    ctx.moveTo(margin,         top);
-    ctx.lineTo(W - margin,     top);
-    ctx.lineTo(W,              bot);
-    ctx.lineTo(0,              bot);
-    ctx.closePath();
-    ctx.fill();
-
-    // Subtle edge highlights
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth   = 1;
-    ctx.beginPath(); ctx.moveTo(margin,     top); ctx.lineTo(0,     bot); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(W - margin, top); ctx.lineTo(W,     bot); ctx.stroke();
-  }
+  // ─────────────────────────────────────────
+  // Tablature bar
+  // ─────────────────────────────────────────
 
   /**
-   * Draw both bases — player (amber) on left, enemy (red) on right.
-   * Each has a castle body, battlements, and an HP bar below.
+   * Scrolling note-slot bar at the top of the screen.
+   * 6 slots; leftmost is active (amber border, larger text).
+   * Slot status colours: pending=dark, hit=green, miss=red.
    */
-  _drawBases(state, W, H) {
-    if (!state.playerBase || !state.enemyBase) return;
+  _drawTablature(state, W, H) {
+    if (!state.tablature || !state.tablature.queue.length) return;
+    const tab = state.tablature;
 
-    const laneY = LANE_Y * H;
-    const laneH = LANE_HEIGHT * H;
-    const baseW = BASE_WIDTH * W;
-    const baseH = laneH * 1.5;    // taller than the lane strip
-
-    this._drawBase(
-      state.playerBase,
-      PLAYER_BASE_X * W,
-      laneY - baseH / 2,
-      baseW, baseH,
-      '#7a4810', '#e8a030',   // player: amber/gold
-    );
-
-    this._drawBase(
-      state.enemyBase,
-      ENEMY_BASE_X * W,
-      laneY - baseH / 2,
-      baseW, baseH,
-      '#6a1010', '#ff4444',   // enemy: red
-    );
-  }
-
-  /**
-   * Draw a single castle base with battlements + HP bar.
-   * @param {import('./systems/base.js').Base} base
-   * @param {number} x      — left edge of base rectangle
-   * @param {number} y      — top edge of base rectangle
-   * @param {number} w
-   * @param {number} h
-   * @param {string} dark   — body fill colour
-   * @param {string} light  — stroke / accent colour
-   */
-  _drawBase(base, x, y, w, h, dark, light) {
+    const BAR_Y  = 40;
+    const BAR_H  = 60;
+    const BAR_W  = W * 0.70;
+    const BAR_X  = (W - BAR_W) / 2;
+    const SLOTS  = 6;
+    const slotW  = BAR_W / SLOTS;
     const ctx    = this.ctx;
-    const hpFrac = base.hp / base.maxHp;
 
     ctx.save();
 
-    // Main body
-    ctx.fillStyle   = dark;
-    ctx.strokeStyle = light;
-    ctx.lineWidth   = 2;
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeRect(x, y, w, h);
+    // Panel background
+    ctx.fillStyle   = 'rgba(10, 10, 15, 0.85)';
+    ctx.fillRect(BAR_X, BAR_Y, BAR_W, BAR_H);
+    ctx.strokeStyle = '#3a3040';
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(BAR_X, BAR_Y, BAR_W, BAR_H);
 
-    // Battlements — 4 merlons across the top
-    const mW = w / 7;
-    const mH = h * 0.14;
-    ctx.fillStyle   = dark;
-    ctx.strokeStyle = light;
-    ctx.lineWidth   = 1.5;
-    for (let i = 0; i < 4; i++) {
-      const mx = x + mW * (i * 1.5 + 0.25);
-      ctx.fillRect(mx, y - mH, mW, mH);
-      ctx.strokeRect(mx, y - mH, mW, mH);
+    // Slots
+    for (let i = 0; i < SLOTS; i++) {
+      if (i >= tab.queue.length) break;
+      const slot     = tab.queue[i];
+      const isActive = (i === 0);
+      const sx       = BAR_X + i * slotW;
+      const pad      = 4;
+
+      // Background fill per status
+      let bg = '#1e1e2e';
+      if (slot.status === 'hit')  bg = '#0a2a0a';
+      if (slot.status === 'miss') bg = '#2a0a0a';
+      ctx.fillStyle = bg;
+      ctx.fillRect(sx + pad, BAR_Y + pad, slotW - pad * 2, BAR_H - pad * 2);
+
+      // Active slot amber border
+      if (isActive) {
+        ctx.strokeStyle = CLR.ACCENT;
+        ctx.lineWidth   = 2;
+        ctx.strokeRect(sx + pad, BAR_Y + pad, slotW - pad * 2, BAR_H - pad * 2);
+      }
+
+      // Note name
+      const noteColor = slot.status === 'hit'  ? '#44ff88'
+                      : slot.status === 'miss' ? '#ff4444'
+                      : isActive               ? CLR.ACCENT
+                                               : CLR.TEXT;
+      ctx.font         = `bold ${isActive ? 20 : 14}px Georgia, serif`;
+      ctx.fillStyle    = noteColor;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(slot.note, sx + slotW / 2, BAR_Y + BAR_H / 2 - 7);
+
+      // QWERTY key label
+      ctx.font      = '10px Georgia, serif';
+      ctx.fillStyle = isActive ? CLR.ACCENT : CLR.MUTED;
+      ctx.fillText(`[${slot.key.toUpperCase()}]`, sx + slotW / 2, BAR_Y + BAR_H / 2 + 12);
     }
 
-    // HP bar below the base
-    const barW = w;
-    const barH = 6;
-    const barX = x;
-    const barY = y + h + 5;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(barX, barY, barW, barH);
-
-    ctx.fillStyle = hpFrac > 0.5
-      ? '#44ff88'
-      : hpFrac > 0.25
-        ? '#ffcc00'
-        : CLR.DANGER;
-    ctx.fillRect(barX, barY, barW * hpFrac, barH);
-
-    // HP text inside the base body
-    const pctText = `${Math.round(hpFrac * 100)}%`;
-    ctx.font         = `bold ${Math.max(9, Math.min(13, w * 0.18))}px Georgia, serif`;
-    ctx.fillStyle    = light;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(pctText, x + w / 2, y + h / 2);
+    // Combo counter (top-right of bar)
+    if (tab.combo > 0) {
+      ctx.font         = 'bold 13px Georgia, serif';
+      ctx.fillStyle    = CLR.ACCENT;
+      ctx.textAlign    = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`×${tab.combo}`, BAR_X + BAR_W - 6, BAR_Y + BAR_H / 2);
+    }
 
     ctx.restore();
   }
 
+  // ─────────────────────────────────────────
+  // Map
+  // ─────────────────────────────────────────
+
+  _drawMap(W, H) {
+    const ctx    = this.ctx;
+    const laneY  = LANE_Y * H;
+    const laneH  = LANE_HEIGHT * H;
+    const top    = laneY - laneH / 2;
+    const bot    = laneY + laneH / 2;
+    const margin = W * 0.03;
+
+    ctx.fillStyle = CLR.GRASS;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = CLR.STRIP;
+    ctx.beginPath();
+    ctx.moveTo(margin,     top);
+    ctx.lineTo(W - margin, top);
+    ctx.lineTo(W,          bot);
+    ctx.lineTo(0,          bot);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath(); ctx.moveTo(margin,     top); ctx.lineTo(0, bot); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(W - margin, top); ctx.lineTo(W, bot); ctx.stroke();
+  }
+
+  // ─────────────────────────────────────────
+  // Bases
+  // ─────────────────────────────────────────
+
+  _drawBases(state, W, H) {
+    if (!state.playerBase || !state.enemyBase) return;
+    const laneH = LANE_HEIGHT * H;
+    const baseW = BASE_WIDTH * W;
+    const baseH = laneH * 1.5;
+    const laneY = LANE_Y * H;
+    this._drawBase(state.playerBase, PLAYER_BASE_X * W, laneY - baseH / 2, baseW, baseH, '#7a4810', '#e8a030');
+    this._drawBase(state.enemyBase,  ENEMY_BASE_X  * W, laneY - baseH / 2, baseW, baseH, '#6a1010', '#ff4444');
+  }
+
+  _drawBase(base, x, y, w, h, dark, light) {
+    const ctx    = this.ctx;
+    const hpFrac = base.hp / base.maxHp;
+    ctx.save();
+
+    ctx.fillStyle = dark; ctx.strokeStyle = light; ctx.lineWidth = 2;
+    ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
+
+    const mW = w / 7, mH = h * 0.14;
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 4; i++) {
+      const mx = x + mW * (i * 1.5 + 0.25);
+      ctx.fillRect(mx, y - mH, mW, mH); ctx.strokeRect(mx, y - mH, mW, mH);
+    }
+
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x, y + h + 5, w, 6);
+    ctx.fillStyle = hpFrac > 0.5 ? '#44ff88' : hpFrac > 0.25 ? '#ffcc00' : CLR.DANGER;
+    ctx.fillRect(x, y + h + 5, w * hpFrac, 6);
+
+    ctx.font         = `bold ${Math.max(9, Math.min(13, w * 0.18))}px Georgia, serif`;
+    ctx.fillStyle    = light;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Math.round(hpFrac * 100)}%`, x + w / 2, y + h / 2);
+
+    ctx.restore();
+  }
+
+  // ─────────────────────────────────────────
+  // Units
+  // ─────────────────────────────────────────
+
   /**
-   * Draw all units — player units as blue circles, enemy units as red circles.
-   * Tier determines radius. HP bar shown above each unit.
+   * Draw all units with HP bars and tier numbers.
+   * Stunned enemy units get a purple outer ring at 1.5× radius.
    */
   _drawUnits(state) {
     const ctx = this.ctx;
@@ -327,6 +343,17 @@ export class Renderer {
 
       ctx.save();
 
+      // Stun ring — purple, drawn behind the body
+      if (unit.stunned) {
+        ctx.beginPath();
+        ctx.arc(unit.x, unit.y, r * 1.5, 0, Math.PI * 2);
+        ctx.strokeStyle = '#cc44ff';
+        ctx.lineWidth   = 3;
+        ctx.globalAlpha = 0.7;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
       // Body circle
       ctx.beginPath();
       ctx.arc(unit.x, unit.y, r, 0, Math.PI * 2);
@@ -336,20 +363,17 @@ export class Renderer {
       ctx.fill();
       ctx.stroke();
 
-      // Tier number inside circle
+      // Tier number
       ctx.font         = `bold ${Math.max(8, r * 0.8)}px Georgia, serif`;
       ctx.fillStyle    = 'rgba(255,255,255,0.85)';
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String(unit.tier), unit.x, unit.y);
 
-      // HP bar above unit (always shown)
-      const bw  = r * 2.6;
-      const bh  = 3;
-      const bx  = unit.x - bw / 2;
-      const by  = unit.y - r - 6;
+      // HP bar above unit
+      const bw = r * 2.6, bh = 3;
+      const bx = unit.x - bw / 2, by = unit.y - r - 6;
       const pct = Math.max(0, unit.hp / unit.maxHp);
-
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.fillRect(bx, by, bw, bh);
       ctx.fillStyle = pct > 0.5 ? '#44ff88' : pct > 0.25 ? '#ffcc00' : CLR.DANGER;
@@ -359,12 +383,88 @@ export class Renderer {
     }
   }
 
-  /** "WAVE N" fade-out announcement. */
+  // ─────────────────────────────────────────
+  // Enemy attack sequences
+  // ─────────────────────────────────────────
+
+  /**
+   * Draw the floating note-pill row above each live enemy unit.
+   * Completed pills: green.  Current pill: amber + pulse.  Remaining: dim grey.
+   * QWERTY key label shown below each pill.
+   */
+  _drawEnemySequences(state, W, H) {   // eslint-disable-line no-unused-vars
+    const ctx = this.ctx;
+    const t   = state.time || 0;   // seconds of game time (for pulsing)
+
+    for (const unit of state.units) {
+      if (!unit.alive || unit.team !== 'enemy') continue;
+      if (!unit.attackSeq || unit.attackSeq.length === 0) continue;
+
+      const seqLen  = unit.attackSeq.length;
+      const PILL_W  = 30;
+      const PILL_H  = 16;
+      const GAP     = 3;
+      const totalW  = seqLen * (PILL_W + GAP) - GAP;
+      const baseX   = unit.x - totalW / 2;
+      const baseY   = unit.y - (unit.radius ?? 12) - 14 - PILL_H;
+
+      ctx.save();
+
+      for (let i = 0; i < seqLen; i++) {
+        const note      = unit.attackSeq[i];
+        const isDone    = i < unit.attackSeqProgress;
+        const isCurrent = i === unit.attackSeqProgress;
+
+        // Pulse scale for current note
+        const scale = isCurrent ? 1 + 0.1 * Math.sin(t * 6) : 1;
+        const pw    = PILL_W * scale;
+        const ph    = PILL_H * scale;
+        const px    = baseX + i * (PILL_W + GAP) + (PILL_W - pw) / 2;
+        const py    = baseY + (PILL_H - ph) / 2;
+
+        // Pill background
+        ctx.fillStyle = isDone ? '#0d3a18' : isCurrent ? '#3a2800' : '#1e1e2e';
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 3);
+        else ctx.rect(px, py, pw, ph);
+        ctx.fill();
+
+        // Pill border
+        ctx.strokeStyle = isDone ? '#44ff88' : isCurrent ? CLR.ACCENT : '#4a4a5a';
+        ctx.lineWidth   = isDone ? 1.5 : isCurrent ? 2 : 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 3);
+        else ctx.rect(px, py, pw, ph);
+        ctx.stroke();
+
+        // Note name
+        ctx.font         = `bold ${isCurrent ? 10 : 9}px Georgia, serif`;
+        ctx.fillStyle    = isDone ? '#44ff88' : isCurrent ? CLR.ACCENT : '#8a8a9a';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(note, px + pw / 2, py + ph / 2);
+
+        // QWERTY key below pill
+        const qKey = NOTE_TO_KEY[note];
+        if (qKey) {
+          ctx.font      = '8px Georgia, serif';
+          ctx.fillStyle = isCurrent ? CLR.ACCENT : '#5a5a6a';
+          ctx.fillText(qKey, baseX + i * (PILL_W + GAP) + PILL_W / 2, baseY + PILL_H + 6);
+        }
+      }
+
+      ctx.restore();
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // Wave announcement
+  // ─────────────────────────────────────────
+
   _drawWaveAnnouncement(state, W, H) {
     if (!state.waveAnnounce || state.wave <= 0) return;
     const elapsed = performance.now() - state.waveAnnounce;
     if (elapsed >= 2000) return;
-
     const ctx = this.ctx;
     ctx.save();
     ctx.globalAlpha  = 1 - elapsed / 2000;

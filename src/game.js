@@ -24,9 +24,11 @@ import {
   BASE_WIDTH, PLAYER_BASE_X, ENEMY_BASE_X,
 } from './constants.js';
 import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
-import { Unit }          from './entities/unit.js';
-import { Base }          from './systems/base.js';
-import { keyboardInput } from './input/keyboard.js';
+import { Unit }                  from './entities/unit.js';
+import { Base }                  from './systems/base.js';
+import { keyboardInput }         from './input/keyboard.js';
+import { TablatureSystem }       from './systems/tablature.js';
+import { AttackSequenceSystem }  from './systems/attackSequence.js';
 
 // Re-export SCENE for callers that import from game.js
 export { SCENE };
@@ -48,6 +50,20 @@ function createInitialState() {
     score: 0,
     wave:  1,                // 1-10; increments every 30 s of play time
 
+    // ── Input (written by keyboard layer) ─────
+    input: {
+      pressedKeys: new Set(),  // Set<string> active note names, auto-cleared after 150 ms
+      octave:      0,          // current octave offset (−2 to +2)
+    },
+
+    // ── Tablature summon bar ───────────────────
+    tablature: {
+      queue:        [],    // [{note, key, status, statusTime}]
+      combo:        0,     // consecutive correct notes
+      activeIndex:  0,     // always 0 — leftmost slot
+      pendingSpawn: null,  // 1|2|3|null — consumed by game loop
+    },
+
     // ── Audio (written by audio subsystem + keyboard layer) ──
     audio: {
       ready:         false,  // mic permission granted + context running
@@ -57,8 +73,7 @@ function createInitialState() {
       confidence:    0,      // 0–1
       waveformData:  null,   // Float32Array for calibration visualiser
       lastNotes:     [],     // string[] — rolling buffer of recent note presses
-      pressedKeys:   new Set(),  // Set<string> currently held keys (for HUD)
-      spawnTier:     null,   // 1|2|3|null — keyboard sets, game loop consumes
+      spawnTier:     null,   // legacy — not set by new keyboard; kept for audio subsystem compat
     },
 
     // ── Bases (created in startGame with canvas-relative coords) ──
@@ -89,6 +104,9 @@ const canvas   = /** @type {HTMLCanvasElement} */ (document.getElementById('game
 const ctx      = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
 const renderer = new Renderer(canvas, ctx);
 const state    = createInitialState();
+
+const tablatureSystem      = new TablatureSystem();
+const attackSequenceSystem = new AttackSequenceSystem();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Scene management
@@ -185,7 +203,6 @@ function startGame() {
   });
 
   // Preserve canvas dimensions — managed by onResize(), not game logic.
-  // Without this, the W===0 guard in Renderer.draw() bails every frame.
   const savedCanvas = state.canvas;
   Object.assign(state, fresh);
   state.canvas = savedCanvas;
@@ -198,10 +215,14 @@ function startGame() {
   state.playerBase = new Base('player', (PLAYER_BASE_X + BASE_WIDTH / 2) * W, baseY);
   state.enemyBase  = new Base('enemy',  (ENEMY_BASE_X  + BASE_WIDTH / 2) * W, baseY);
 
+  // Initialise subsystems
+  tablatureSystem.reset(state);
+  attackSequenceSystem.reset(state);
+
   // Announce Wave 1
   state.waveAnnounce = performance.now();
 
-  keyboardInput.start(state);
+  keyboardInput.start(state, tablatureSystem, attackSequenceSystem);
   setScene(SCENE.PLAYING);
 }
 
@@ -230,31 +251,46 @@ function rollEnemyTier(wave) {
 
 /** Spawn one enemy unit just outside the enemy base. */
 function spawnEnemyUnit() {
-  const W      = state.canvas.width;
-  const H      = state.canvas.height;
-  const laneHH = LANE_HEIGHT * H * 0.35;
-  const y      = LANE_Y * H + (Math.random() * 2 - 1) * laneHH;
-  const x      = ENEMY_BASE_X * W - 20;   // just left of enemy base left edge
-  state.units.push(new Unit('enemy', rollEnemyTier(state.wave), x, y));
+  const W        = state.canvas.width;
+  const H        = state.canvas.height;
+  const halfLane = LANE_HEIGHT * H * 0.5;
+  const laneTop  = LANE_Y * H - halfLane;
+  const laneBot  = LANE_Y * H + halfLane;
+  const spread   = halfLane * 0.7;
+  const rawY     = LANE_Y * H + (Math.random() * 2 - 1) * spread;
+  // Clamp so the unit circle stays fully within the combat strip
+  const tier     = rollEnemyTier(state.wave);
+  const radius   = [0, 12, 16, 20][tier];
+  const y        = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
+  const x        = ENEMY_BASE_X * W - 20;
+
+  const unit = new Unit('enemy', tier, x, y);
+  attackSequenceSystem.assignSequence(unit);
+  state.units.push(unit);
 }
 
 /**
- * Try to spend resources and spawn a player unit.
- * Silently fails if resources are insufficient.
- * @param {1|2|3} tier
+ * Spawn a player unit, optionally without spending resources.
+ * Silently fails if resources insufficient (when free=false).
+ * @param {1|2|3}  tier
+ * @param {boolean} [free=false] — if true, skips resource check/deduction (tablature spawn)
  */
-function spawnPlayerUnit(tier) {
+function spawnPlayerUnit(tier, free = false) {
   const COST = [0, 20, 50, 100];
-  const cost = COST[tier];
+  const cost = free ? 0 : COST[tier];
   if (state.resources < cost) return;
+  if (!free) state.resources -= cost;
 
-  state.resources -= cost;
-
-  const W      = state.canvas.width;
-  const H      = state.canvas.height;
-  const laneHH = LANE_HEIGHT * H * 0.35;
-  const y      = LANE_Y * H + (Math.random() * 2 - 1) * laneHH;
-  const x      = (PLAYER_BASE_X + BASE_WIDTH) * W + 20;  // just right of player base
+  const W        = state.canvas.width;
+  const H        = state.canvas.height;
+  const halfLane = LANE_HEIGHT * H * 0.5;
+  const laneTop  = LANE_Y * H - halfLane;
+  const laneBot  = LANE_Y * H + halfLane;
+  const spread   = halfLane * 0.7;
+  const rawY     = LANE_Y * H + (Math.random() * 2 - 1) * spread;
+  const radius   = [0, 12, 16, 20][tier];
+  const y        = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
+  const x        = (PLAYER_BASE_X + BASE_WIDTH) * W + 20;
   state.units.push(new Unit('player', tier, x, y));
 }
 
@@ -302,6 +338,10 @@ function update(dt) {
       // Audio pipeline (mic chord detection / audio analysis)
       updateAudio(state, dt);
 
+      // ── Subsystem updates ─────────────────────────────────────────────────
+      tablatureSystem.update(dt, state);
+      attackSequenceSystem.update(dt, state);
+
       // ── Resources tick (+10/s, cap 200) ─────────────────────────────────
       state.resources = Math.min(200, state.resources + 10 * dt);
 
@@ -321,10 +361,10 @@ function update(dt) {
         spawnEnemyUnit();
       }
 
-      // ── Player spawn action (set by keyboard debounce timer) ─────────────
-      if (state.audio.spawnTier !== null) {
-        spawnPlayerUnit(state.audio.spawnTier);
-        state.audio.spawnTier = null;
+      // ── Tablature spawn (free — sequence is the cost) ────────────────────
+      if (state.tablature.pendingSpawn !== null) {
+        spawnPlayerUnit(state.tablature.pendingSpawn, true);
+        state.tablature.pendingSpawn = null;
       }
 
       // ── Unit updates + cleanup ────────────────────────────────────────────
