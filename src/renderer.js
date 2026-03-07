@@ -33,11 +33,11 @@ const CLR = Object.freeze({
 const TEAM_COLOUR = Object.freeze({ player: '#5b8fff', enemy: '#ff4444' });
 const TEAM_STROKE = Object.freeze({ player: '#aac8ff', enemy: '#ff9988' });
 
-// Note → QWERTY key label (base octave, for sequence pill display)
+// Note → QWERTY key label (right-hand layout, for sequence pill display)
 const NOTE_TO_KEY = Object.freeze({
-  'C3': 'A', 'D3': 'S', 'E3': 'D', 'F3': 'F',
-  'G3': 'G', 'A3': 'H', 'B3': 'J', 'C4': 'K',
-  'C#3': 'W', 'D#3': 'E', 'F#3': 'T', 'G#3': 'Y', 'A#3': 'U',
+  'C3':  'H', 'D3':  'J', 'E3':  'K', 'F3':  'L',
+  'G3':  ';', 'A3':  "'", 'B3':  '↵',
+  'C#3': 'U', 'D#3': 'I', 'F#3': 'O', 'G#3': 'P', 'A#3': '[',
 });
 
 export class Renderer {
@@ -246,6 +246,25 @@ export class Renderer {
       ctx.textAlign    = 'right';
       ctx.textBaseline = 'middle';
       ctx.fillText(`×${tab.combo}`, BAR_X + BAR_W - 6, BAR_Y + BAR_H / 2);
+    }
+
+    // ── Summon cooldown overlay ───────────────────────────────────────────
+    const cooldownEnd = tab.summonCooldownEnd || 0;
+    const now         = performance.now();
+    if (cooldownEnd > now) {
+      // Dim the whole bar to signal blocked spawning
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle   = 'rgba(10, 10, 15, 0.6)';
+      ctx.fillRect(BAR_X, BAR_Y, BAR_W, BAR_H);
+
+      // Countdown label at full opacity (restore before drawing text)
+      ctx.globalAlpha  = 1;
+      const secsLeft   = ((cooldownEnd - now) / 1000).toFixed(1);
+      ctx.font         = 'bold 15px Georgia, serif';
+      ctx.fillStyle    = CLR.ACCENT;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`Cooldown ${secsLeft}s`, BAR_X + BAR_W / 2, BAR_Y + BAR_H / 2);
     }
 
     ctx.restore();

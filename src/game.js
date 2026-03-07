@@ -58,10 +58,11 @@ function createInitialState() {
 
     // ── Tablature summon bar ───────────────────
     tablature: {
-      queue:        [],    // [{note, key, status, statusTime}]
-      combo:        0,     // consecutive correct notes
-      activeIndex:  0,     // always 0 — leftmost slot
-      pendingSpawn: null,  // 1|2|3|null — consumed by game loop
+      queue:             [],    // [{note, key, status, statusTime}]
+      combo:             0,     // consecutive correct notes
+      activeIndex:       0,     // always 0 — leftmost slot
+      pendingSpawn:      null,  // 1|2|3|null — consumed by game loop
+      summonCooldownEnd: 0,     // performance.now() when cooldown expires (0 = none)
     },
 
     // ── Audio (written by audio subsystem + keyboard layer) ──
@@ -85,8 +86,8 @@ function createInitialState() {
 
     // ── Resources (currency for spawning) ─────
     resources:          100,
-    enemySpawnTimer:    4,   // seconds until next enemy spawn
-    enemySpawnInterval: 4,   // current inter-spawn delay (shrinks with wave)
+    enemySpawnTimer:    8,   // seconds until next enemy spawn
+    enemySpawnInterval: 8,   // current inter-spawn delay (reduces every 60 s of play)
 
     // ── Wave announcement ─────────────────────
     waveAnnounce: 0,         // performance.now() timestamp, 0 = none
@@ -231,15 +232,23 @@ function startGame() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Pick an enemy tier using wave-scaled probabilities.
- * Wave 1-3:  80 % tier1, 20 % tier2
- * Wave 4-7:  50 % tier1, 40 % tier2, 10 % tier3
- * Wave 8-10: 20 % tier1, 50 % tier2, 30 % tier3
- * @param {number} wave — 1-indexed wave number
+ * Pick an enemy tier using time-gated + wave-scaled probabilities.
+ *
+ * First 120 s:  95 % tier 1, 5 % tier 2, 0 % tier 3  (tutorial window)
+ * Wave 1-3:     80 % tier 1, 20 % tier 2
+ * Wave 4-7:     50 % tier 1, 40 % tier 2, 10 % tier 3
+ * Wave 8-10:    20 % tier 1, 50 % tier 2, 30 % tier 3
+ *
+ * @param {number} wave         — 1-indexed wave number
+ * @param {number} elapsedSecs  — total play seconds (state.time)
  * @returns {1|2|3}
  */
-function rollEnemyTier(wave) {
+function rollEnemyTier(wave, elapsedSecs) {
   const r = Math.random();
+  // Gentle tutorial window: almost all tier-1 for the first 2 minutes
+  if (elapsedSecs < 120) {
+    return r < 0.95 ? 1 : 2;
+  }
   if (wave <= 3) {
     return r < 0.8 ? 1 : 2;
   } else if (wave <= 7) {
@@ -249,8 +258,19 @@ function rollEnemyTier(wave) {
   }
 }
 
-/** Spawn one enemy unit just outside the enemy base. */
+/**
+ * Spawn one enemy unit just outside the enemy base.
+ * Hard cap: does nothing if ≥ 6 enemy units are already on screen.
+ * Speed cap: enemy speed is halved vs player-unit base stats.
+ */
 function spawnEnemyUnit() {
+  // Hard cap — prevent overwhelming the player with too many enemies at once
+  let enemyCount = 0;
+  for (let i = 0; i < state.units.length; i++) {
+    if (state.units[i].team === 'enemy') enemyCount++;
+  }
+  if (enemyCount >= 6) return;
+
   const W        = state.canvas.width;
   const H        = state.canvas.height;
   const halfLane = LANE_HEIGHT * H * 0.5;
@@ -259,12 +279,14 @@ function spawnEnemyUnit() {
   const spread   = halfLane * 0.7;
   const rawY     = LANE_Y * H + (Math.random() * 2 - 1) * spread;
   // Clamp so the unit circle stays fully within the combat strip
-  const tier     = rollEnemyTier(state.wave);
+  const tier     = rollEnemyTier(state.wave, state.time);
   const radius   = [0, 12, 16, 20][tier];
   const y        = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
   const x        = ENEMY_BASE_X * W - 20;
 
   const unit = new Unit('enemy', tier, x, y);
+  // Global 0.5× enemy speed — makes early game much more manageable
+  unit.speed *= 0.5;
   attackSequenceSystem.assignSequence(unit);
   state.units.push(unit);
 }
@@ -286,8 +308,8 @@ function spawnPlayerUnit(tier, free = false) {
   const halfLane = LANE_HEIGHT * H * 0.5;
   const laneTop  = LANE_Y * H - halfLane;
   const laneBot  = LANE_Y * H + halfLane;
-  const spread   = halfLane * 0.7;
-  const rawY     = LANE_Y * H + (Math.random() * 2 - 1) * spread;
+  // ±20 px variance (spec) — keeps player units near lane centre on spawn
+  const rawY     = LANE_Y * H + (Math.random() * 2 - 1) * 20;
   const radius   = [0, 12, 16, 20][tier];
   const y        = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
   const x        = (PLAYER_BASE_X + BASE_WIDTH) * W + 20;
@@ -350,8 +372,13 @@ function update(dt) {
       if (targetWave > state.wave) {
         state.wave         = targetWave;
         state.waveAnnounce = performance.now();
-        // Spawn interval scales from 4 s (wave 1) → 1.5 s (wave 10)
-        state.enemySpawnInterval = Math.max(1.5, 4 - (state.wave - 1) * (2.5 / 9));
+      }
+
+      // ── Dynamic spawn interval: −0.5 s every 60 s, floor 2 s ────────────
+      // Initial 8 s → 7.5 s at 60 s → 7 s at 120 s → … → 2 s at 720 s
+      const targetInterval = Math.max(2, 8 - Math.floor(state.time / 60) * 0.5);
+      if (targetInterval < state.enemySpawnInterval) {
+        state.enemySpawnInterval = targetInterval;
       }
 
       // ── Enemy spawning ────────────────────────────────────────────────────

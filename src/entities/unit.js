@@ -13,24 +13,32 @@
  *   Tier 2 — 60 hp, 15 dmg, 45 px/s, 60 px range, 0.8 atk/s, r=16
  *   Tier 3 — 120 hp, 25 dmg, 35 px/s, 70 px range, 0.6 atk/s, r=20
  *
- * MARCHING AI  (update method)
- * ────────────────────────────
- *   • If stunned: freeze entirely (marching = false, no attack)
- *   • If enemy unit in range: set marching = false, attack if cooldown ready
- *   • If target base in range: set marching = false, attack base
- *   • Otherwise: set marching = true, advance one step toward enemy side
+ *   Note: enemy units have their speed halved in game.js (unit.speed *= 0.5)
+ *   after construction, so the TIER_STATS values apply at full strength only
+ *   to player units.
+ *
+ * UNIT AI  (update method)
+ * ────────────────────────
+ *   Priority order each tick:
+ *   1. If stunned: freeze (marching = false, no attack, no move)
+ *   2. findTarget() — nearest enemy unit within 2× attackRange
+ *      → If found: move toward it at speed (2D angle), attack when in attackRange
+ *   3. Fall back to enemy base:
+ *      → If in attackRange: stop and attack base
+ *      → Otherwise: march horizontally toward base (y stays fixed)
  *
  * ATTACK SEQUENCE  (assigned externally by AttackSequenceSystem)
- * ───────────────
- *   unit.attackSeq         — string[] note names the player must press to trigger effect
- *   unit.attackSeqProgress — index of next note to match (0 = full sequence pending)
+ * ──────────────────────────────────────────────────────────────
+ *   unit.attackSeq         — string[] note names the player must press
+ *   unit.attackSeqProgress — index of next note to match (0 = full seq pending)
  *   unit.stunned           — true while stun effect is active
- *   unit.stunTimer         — seconds of stun remaining
+ *   unit.stunTimer         — seconds of stun remaining (ticked by AttackSequenceSystem)
  *
  * ZERO-ALLOCATION hot path
  * ─────────────────────────
  *   update() uses only local scalars and indexed for-loops.
- *   No array methods (filter/sort/map) are called.
+ *   Math.sqrt is called at most once per unit per frame (when steering to a unit target)
+ *   — this is acceptable for ≤ ~20 units and is not a memory allocation.
  */
 
 /** @type {Array<null|{hp,damage,speed,range,attackSpeed,radius}>} */
@@ -46,7 +54,7 @@ export class Unit {
    * @param {'player'|'enemy'} team
    * @param {1|2|3}            tier
    * @param {number}           x    — logical pixel x (spawn position)
-   * @param {number}           y    — logical pixel y (lane position, fixed)
+   * @param {number}           y    — logical pixel y (lane position)
    */
   constructor(team, tier, x, y) {
     const stats = TIER_STATS[tier];
@@ -66,11 +74,10 @@ export class Unit {
     this.attackCooldown = 0;
     this.alive          = true;
 
-    // ── Marching state (fix: explicitly tracked so renderer can animate) ──
     /** True only while actively advancing toward the enemy side. */
-    this.marching       = true;
+    this.marching = true;
 
-    // ── Attack sequence (assigned by AttackSequenceSystem on spawn) ────────
+    // ── Attack sequence (assigned by AttackSequenceSystem on enemy spawn) ─
     /** @type {string[]|null} */
     this.attackSeq         = null;
     this.attackSeqProgress = 0;
@@ -79,10 +86,43 @@ export class Unit {
   }
 
   /**
-   * Per-frame update — march, fight enemy units, or attack the target base.
+   * Find the highest-priority combat target — the nearest enemy unit within
+   * 2× attackRange.  Returns the enemy base as a fallback when no unit qualifies.
+   *
+   * Using 2× range as the "lock-on" radius encourages proactive steering
+   * toward nearby enemies before they're right on top of each other, which
+   * reduces blob-stacking artifacts.
+   *
+   * ZERO ALLOCATION: indexed for-loop only.
+   *
+   * @param {Unit[]}  allUnits  — full state.units array (both teams)
+   * @param {import('../systems/base.js').Base} enemyBase — this unit's target base
+   * @returns {Unit|import('../systems/base.js').Base}
+   */
+  findTarget(allUnits, enemyBase) {
+    const lockR2 = (this.range * 2) * (this.range * 2);
+    let nearestUnit  = null;
+    let nearestDist2 = lockR2 + 1;
+
+    for (let i = 0; i < allUnits.length; i++) {
+      const u = allUnits[i];
+      if (!u.alive || u.team === this.team) continue;
+      const dx = u.x - this.x;
+      const dy = u.y - this.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= lockR2 && d2 < nearestDist2) {
+        nearestDist2 = d2;
+        nearestUnit  = u;
+      }
+    }
+
+    return nearestUnit !== null ? nearestUnit : enemyBase;
+  }
+
+  /**
+   * Per-frame simulation step.
    *
    * ZERO ALLOCATION: all intermediate values are local scalars.
-   * No array methods are called.
    *
    * @param {number} dt         — delta time in seconds
    * @param {Unit[]} allUnits   — state.units reference (both teams, not copied)
@@ -92,7 +132,7 @@ export class Unit {
   update(dt, allUnits, bases) {
     if (!this.alive) return;
 
-    // ── Stun: freeze entirely ─────────────────────────────────────────────
+    // ── 1. Stun: freeze entirely ──────────────────────────────────────────
     if (this.stunned) {
       this.marching = false;
       return;
@@ -100,41 +140,40 @@ export class Unit {
 
     if (this.attackCooldown > 0) this.attackCooldown -= dt;
 
-    const dir        = this.team === 'player' ? 1 : -1;
     const targetBase = this.team === 'player' ? bases.enemy : bases.player;
-    const r2         = this.range * this.range;
+    const target     = this.findTarget(allUnits, targetBase);
+    const atkR2      = this.range * this.range;
 
-    // ── Find nearest enemy unit within attack range ────────────────────────
-    let nearestEnemy = null;
-    let nearestDist2 = r2 + 1;   // initialise just outside range
+    if (target !== targetBase) {
+      // ── 2a. Unit target found: steer toward it in 2D, attack when in range
+      const dx   = target.x - this.x;
+      const dy   = target.y - this.y;
+      const d2   = dx * dx + dy * dy;
 
-    for (let i = 0; i < allUnits.length; i++) {
-      const u = allUnits[i];
-      if (!u.alive || u.team === this.team) continue;
-      const dx = u.x - this.x;
-      const dy = u.y - this.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 <= r2 && d2 < nearestDist2) {
-        nearestDist2 = d2;
-        nearestEnemy = u;
-      }
-    }
-
-    if (nearestEnemy !== null) {
-      // ── Enemy in range: hold position and attack ─────────────────────────
-      this.marching = false;
-      if (this.attackCooldown <= 0) {
-        nearestEnemy.hp -= this.damage;
-        if (nearestEnemy.hp <= 0) nearestEnemy.alive = false;
-        this.attackCooldown = 1 / this.attackSpeed;
+      if (d2 <= atkR2) {
+        // In attack range: hold position
+        this.marching = false;
+        if (this.attackCooldown <= 0) {
+          target.hp -= this.damage;
+          if (target.hp <= 0) target.alive = false;
+          this.attackCooldown = 1 / this.attackSpeed;
+        }
+      } else {
+        // Steer toward target unit using normalised direction vector
+        this.marching   = true;
+        const dist      = Math.sqrt(d2);  // one sqrt per unit per frame — acceptable
+        const nx        = dx / dist;
+        const ny        = dy / dist;
+        this.x         += nx * this.speed * dt;
+        this.y         += ny * this.speed * dt;
       }
     } else {
-      // ── No unit in range — check target base ─────────────────────────────
+      // ── 2b. No unit in lock-on radius — approach the enemy base ──────────
       const bx  = targetBase.x - this.x;
       const by  = targetBase.y - this.y;
       const bd2 = bx * bx + by * by;
 
-      if (bd2 <= r2) {
+      if (bd2 <= atkR2) {
         // At base: stop and attack
         this.marching = false;
         if (this.attackCooldown <= 0) {
@@ -142,8 +181,9 @@ export class Unit {
           this.attackCooldown = 1 / this.attackSpeed;
         }
       } else {
-        // Clear path ahead — march
+        // Clear path — march horizontally (y stays fixed, preserving spawn variance)
         this.marching  = true;
+        const dir      = this.team === 'player' ? 1 : -1;
         this.x        += dir * this.speed * dt;
       }
     }
