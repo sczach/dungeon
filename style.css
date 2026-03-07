@@ -1,0 +1,193 @@
+/* ─────────────────────────────────────────────
+   Chord Wars — Base Styles
+   Philosophy: canvas fills the viewport;
+   the overlay floats above it with pointer-
+   events only where needed (screens / HUD).
+───────────────────────────────────────────── */
+
+/* ── Reset / root ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --clr-bg:        #0a0a0f;
+  --clr-surface:   rgba(15, 15, 25, 0.85);
+  --clr-accent:    #e8a030;   /* warm guitar-amber */
+  --clr-accent2:   #5b8fff;   /* cool magic-blue */
+  --clr-danger:    #ff4444;
+  --clr-text:      #f0ead6;
+  --clr-muted:     #7a7060;
+
+  /* Fluid type scale */
+  --fs-xs:   clamp(0.65rem,  1.5vw, 0.8rem);
+  --fs-sm:   clamp(0.8rem,   2vw,   1rem);
+  --fs-base: clamp(1rem,     2.5vw, 1.25rem);
+  --fs-lg:   clamp(1.25rem,  3.5vw, 2rem);
+  --fs-xl:   clamp(2rem,     8vw,   5rem);
+
+  --radius: 6px;
+  --transition: 200ms ease;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;          /* never scroll — the canvas IS the page */
+  background: var(--clr-bg);
+  color: var(--clr-text);
+  /* Slab-serif display + humanist mono for numbers */
+  font-family: 'Georgia', 'Times New Roman', serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Canvas ── */
+#game-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* Canvas pixel dimensions set by game.js to match devicePixelRatio */
+}
+
+/* ── Overlay ── */
+#overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;  /* let clicks fall through to canvas by default */
+  z-index: 10;
+}
+
+/* ── Screen sections ── */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: none;           /* hidden by default */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 2rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* game.js sets data-scene="TITLE" etc. on <body>;
+   each screen self-activates via CSS attribute selector. */
+body[data-scene="TITLE"]       #screen-title,
+body[data-scene="CALIBRATION"] #screen-calibration,
+body[data-scene="PLAYING"]     #screen-hud,
+body[data-scene="VICTORY"]     #screen-victory,
+body[data-scene="DEFEAT"]      #screen-defeat {
+  display: flex;
+  pointer-events: auto;   /* restore interaction for active screen */
+}
+
+/* ── Typography ── */
+.logo {
+  font-size: var(--fs-xl);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 0.9;
+  text-transform: uppercase;
+  color: var(--clr-accent);
+  text-shadow:
+    0 0 40px rgba(232, 160, 48, 0.5),
+    0 2px 0 rgba(0,0,0,0.8);
+}
+
+h2 {
+  font-size: var(--fs-lg);
+  color: var(--clr-accent);
+  letter-spacing: 0.04em;
+}
+
+.tagline {
+  font-size: var(--fs-sm);
+  color: var(--clr-muted);
+  max-width: 28ch;
+  line-height: 1.5;
+}
+
+.mic-notice {
+  font-size: var(--fs-xs);
+  color: var(--clr-muted);
+  margin-top: 0.5rem;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-block;
+  padding: 0.65em 2em;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  font-size: var(--fs-base);
+  font-family: inherit;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: all var(--transition);
+  min-width: 14rem;
+}
+
+.btn--primary {
+  background: var(--clr-accent);
+  color: #0a0a0f;
+  border-color: var(--clr-accent);
+}
+.btn--primary:hover:not(:disabled) {
+  background: #f5b840;
+  box-shadow: 0 0 20px rgba(232,160,48,0.5);
+  transform: translateY(-2px);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--clr-text);
+  border-color: var(--clr-muted);
+}
+.btn--ghost:hover:not(:disabled) {
+  border-color: var(--clr-text);
+  color: var(--clr-accent);
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── Calibration meter ── */
+#calibration-meter {
+  width: min(320px, 80vw);
+  height: 14px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 99px;
+  overflow: hidden;
+}
+#calibration-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--clr-accent2), var(--clr-accent));
+  border-radius: 99px;
+  transition: width 80ms linear;
+}
+#calibration-status {
+  font-size: var(--fs-sm);
+  color: var(--clr-muted);
+  min-height: 1.4em;
+}
+
+/* ── HUD mount point (populated by hud.js) ── */
+.hud {
+  /* HUD is full-bleed; its children position themselves absolutely */
+  justify-content: flex-start;
+  align-items: flex-start;
+  pointer-events: none;  /* individual HUD elements re-enable as needed */
+}
+
+/* ── Utility ── */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+}
