@@ -30,3 +30,23 @@ export const SCENE = Object.freeze({
   VICTORY:     'VICTORY',
   DEFEAT:      'DEFEAT',
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RTS map layout — all values are fractions of canvas logical dimensions.
+// Multiply by W (width) or H (height) to get logical pixels.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Centre of combat strip as a fraction of canvas height. */
+export const LANE_Y      = 0.5;
+
+/** Height of combat strip as a fraction of canvas height. */
+export const LANE_HEIGHT = 0.18;
+
+/** Width of each base rectangle as a fraction of canvas width. */
+export const BASE_WIDTH  = 0.08;
+
+/** Left edge of player base as a fraction of canvas width. */
+export const PLAYER_BASE_X = 0.04;
+
+/** Left edge of enemy base as a fraction of canvas width. */
+export const ENEMY_BASE_X  = 0.88;
