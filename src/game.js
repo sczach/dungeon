@@ -12,22 +12,18 @@
  */
 
 import { Renderer }      from './renderer.js';
+import { SCENE }         from './constants.js';
 import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
 import { WaveManager }   from './systems/waves.js';
 import { updateCombat }  from './systems/combat.js';
 import { PromptManager } from './systems/prompts.js';
 
 // ─────────────────────────────────────────────
-// Scene identifiers (string constants so they
-// appear legibly in DevTools and CSS selectors)
+// Scene identifiers live in src/constants.js.
+// Re-exported here so callers that already
+// import game.js don't need an extra import.
 // ─────────────────────────────────────────────
-export const SCENE = Object.freeze({
-  TITLE:       'TITLE',
-  CALIBRATION: 'CALIBRATION',
-  PLAYING:     'PLAYING',
-  VICTORY:     'VICTORY',
-  DEFEAT:      'DEFEAT',
-});
+export { SCENE };
 
 // ─────────────────────────────────────────────
 // Canonical game state object.

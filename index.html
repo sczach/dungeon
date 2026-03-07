@@ -59,6 +59,19 @@
 
   </div><!-- /#overlay -->
 
+  <!-- Error boundary: surfaces silent module load / runtime errors on-screen.
+       Must run before game.js so errors during module evaluation are caught. -->
+  <script>
+    window.addEventListener('error', e => {
+      document.body.innerHTML =
+        `<pre style="color:red;padding:20px;white-space:pre-wrap">${e.message}\n${e.filename}:${e.lineno}</pre>`;
+    });
+    window.addEventListener('unhandledrejection', e => {
+      document.body.innerHTML =
+        `<pre style="color:red;padding:20px;white-space:pre-wrap">${e.reason}</pre>`;
+    });
+  </script>
+
   <!-- Entry point — type="module" gives us ES module scope and deferred execution -->
   <script type="module" src="src/game.js"></script>
 

@@ -9,7 +9,7 @@
  *   Coordinate system: logical pixels (ctx already scaled for DPR by game.js).
  */
 
-import { SCENE }         from './game.js';
+import { SCENE }         from './constants.js';
 import { CAMPFIRE_PATH } from './systems/path.js';
 
 // ─────────────────────────────────────────────
