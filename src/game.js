@@ -12,6 +12,12 @@
  */
 
 import { Renderer } from './renderer.js';
+import {
+  startCapture,
+  updateAudio,
+  updateCalibration,
+  stopCapture,
+} from './audio/index.js';
 
 // ─────────────────────────────────────────────
 // Scene identifiers (string constants so they
@@ -123,17 +129,21 @@ function wireButtons() {
   const $ = (id) => document.getElementById(id);
 
   // TITLE → CALIBRATION
-  $('btn-start')?.addEventListener('click', () => {
+  // startCapture() MUST be called inside the click handler (user gesture)
+  // so that iOS Safari allows AudioContext creation and mic access.
+  $('btn-start')?.addEventListener('click', async () => {
     setScene(SCENE.CALIBRATION);
-    // TODO Phase 1A: start mic capture here
+    await startCapture(state);
   });
 
-  // TITLE → PLAYING (practice skips calibration for now)
-  $('btn-practice')?.addEventListener('click', () => {
+  // TITLE → PLAYING (practice mode — skips calibration, mic optional)
+  $('btn-practice')?.addEventListener('click', async () => {
+    // Still attempt capture so audio works in practice; silence errors.
+    startCapture(state).catch(() => {});
     startGame();
   });
 
-  // CALIBRATION → PLAYING (enabled by audio subsystem once floor is set)
+  // CALIBRATION → PLAYING (button enabled by updateCalibration after ~1.5 s)
   $('btn-calibration-done')?.addEventListener('click', () => {
     startGame();
   });
@@ -193,7 +203,7 @@ function loop(timestamp) {
  * @param {number} dt         — delta time in seconds
  * @param {number} timestamp  — raw rAF timestamp (ms)
  */
-function update(dt, timestamp) {
+function update(dt, timestamp) {   // eslint-disable-line no-unused-vars
   if (state.paused) return;
 
   switch (state.scene) {
@@ -202,14 +212,14 @@ function update(dt, timestamp) {
       break;
 
     case SCENE.CALIBRATION:
-      // TODO Phase 1A: poll audio subsystem for noise-floor calibration progress
+      updateCalibration(state);
       break;
 
     case SCENE.PLAYING:
       state.time       += dt;
       state.frameCount += 1;
 
-      // TODO Phase 1A: updateAudio(state, dt)
+      updateAudio(state, dt);
       // TODO Phase 1B: updateWaves(state, dt)
       // TODO Phase 1B: updateEnemies(state, dt)
       // TODO Phase 1B: updateUnits(state, dt)
@@ -227,6 +237,21 @@ function update(dt, timestamp) {
       break;
   }
 }
+
+// ─────────────────────────────────────────────
+// Page visibility — pause AudioContext on hide
+// to avoid battery drain on mobile.
+// ─────────────────────────────────────────────
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    state.paused = true;
+  } else {
+    state.paused = false;
+    // AudioContext may have been suspended by the browser on hide;
+    // unlockAudioContext() (already wired in startCapture) will
+    // resume it on the next user gesture.
+  }
+});
 
 // ─────────────────────────────────────────────
 // Init
