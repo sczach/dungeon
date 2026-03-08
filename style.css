@@ -183,6 +183,12 @@ h2 {
   pointer-events: none;  /* individual HUD elements re-enable as needed */
 }
 
+/* During gameplay the HUD div is an empty mount point — never let it swallow
+   pointer events that belong to the canvas (piano click/touch input). */
+body[data-scene="PLAYING"] #screen-hud {
+  pointer-events: none;
+}
+
 /* ── Utility ── */
 .visually-hidden {
   position: absolute;

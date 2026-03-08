@@ -21,6 +21,19 @@ const DEFAULTS = Object.freeze({
 
 // ─── CSS (injected once) ─────────────────────────────────────────────────────
 const PANEL_CSS = `
+  #btn-settings {
+    background: transparent;
+    border: 1px solid #7a7060;
+    color: #f0ead6;
+    font-family: Georgia, serif;
+    font-size: 13px;
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    margin-top: 8px;
+  }
+  #btn-settings:hover { border-color: #e8a030; color: #e8a030; }
   #cw-settings-panel {
     display: none;
     position: fixed; top: 50%; left: 50%;
@@ -37,7 +50,6 @@ const PANEL_CSS = `
     max-width: 440px;
     box-shadow: 0 0 40px rgba(0,0,0,0.7);
   }
-  body[data-scene="title"] #cw-settings-panel { display: block !important; }
   #cw-settings-panel h3 {
     margin: 0 0 18px;
     font-size: 16px;
@@ -127,6 +139,7 @@ export class SettingsUI {
   constructor() {
     /** @type {HTMLElement|null} */
     this._panel = null;
+    this._panelVisible = false;
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -283,13 +296,17 @@ export class SettingsUI {
       if (typeof onStart === 'function') onStart();
     });
 
-    // Click-outside-to-close (click on body outside panel hides it until TITLE re-entered)
+    // Gear button toggles the panel
+    const gearBtn = document.getElementById('btn-settings');
+    if (gearBtn) {
+      gearBtn.addEventListener('click', () => this._togglePanel());
+    }
+
+    // Click-outside-to-close
     document.addEventListener('mousedown', (e) => {
-      if (this._panel && !this._panel.contains(e.target)) {
-        // Only close if game is still on TITLE (don't interfere with gameplay)
-        if (document.body.dataset.scene === 'title') {
-          // Re-show on next TITLE entry — don't actually hide (CSS controls visibility)
-        }
+      if (!this._panel || !this._panelVisible) return;
+      if (!this._panel.contains(e.target) && e.target.id !== 'btn-settings') {
+        this._togglePanel(false);
       }
     });
 
@@ -297,6 +314,13 @@ export class SettingsUI {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  /** Show or hide the settings panel. Pass explicit boolean to force state. */
+  _togglePanel(forceVisible) {
+    if (!this._panel) return;
+    this._panelVisible = (forceVisible !== undefined) ? forceVisible : !this._panelVisible;
+    this._panel.style.display = this._panelVisible ? 'block' : 'none';
+  }
 
   _refreshDiff(panel, difficulty) {
     panel.querySelectorAll('.cw-diff-btn').forEach((btn) => {
