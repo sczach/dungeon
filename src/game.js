@@ -114,6 +114,12 @@ function createInitialState() {
     enemySpawnTimer:    8,       // seconds until next enemy spawn
     enemySpawnInterval: 8,       // current inter-spawn delay (reduces every 60 s of play)
 
+    // ── Summon cooldown — top-level gate; 500 ms after any successful summon ──
+    summonCooldownEnd:  0,       // performance.now() timestamp; 0 = no cooldown active
+
+    // ── Instrument selection (title screen) ──
+    instrument: 'piano',         // 'piano' | 'guitar' | 'voice'
+
     // ── Wave announcement ─────────────────────
     waveAnnounce: 0,         // performance.now() timestamp, 0 = none
 
@@ -245,6 +251,7 @@ function startGame() {
     masterVolume:    state.masterVolume,
     showChordCues:   state.showChordCues,
     cueDisplayStyle: state.cueDisplayStyle,
+    instrument:      state.instrument || 'piano',
     inputMode:       'summon',   // always reset to summon on new game
   });
 
@@ -343,30 +350,64 @@ function spawnEnemyUnit() {
 }
 
 /**
- * Spawn a player unit, optionally without spending resources.
+ * Spawn a player unit with role-based positioning and stats.
  * Silently fails if resources insufficient (when free=false).
- * @param {1|2|3}  tier
- * @param {boolean} [free=false] — if true, skips resource check/deduction (tablature spawn)
- * @param {string|null} [unitType=null] — visual type: 'archer'|'knight'|'mage'|null
+ *
+ * @param {1|2|3}       tier
+ * @param {boolean}     [free=false]      — skip resource check/deduction
+ * @param {string|null} [unitType=null]   — 'archer'|'knight'|'mage'|null
+ * @param {number}      [swarmOffset=0]   — 0/1/2 spread index for mage swarm units
  */
-function spawnPlayerUnit(tier, free = false, unitType = null) {
+function spawnPlayerUnit(tier, free = false, unitType = null, swarmOffset = 0) {
   const COST = [0, 20, 50, 100];
   const cost = free ? 0 : COST[tier];
   if (state.resources < cost) return;
   if (!free) state.resources -= cost;
 
-  const W        = state.canvas.width;
-  const H        = state.canvas.height;
-  const halfLane = LANE_HEIGHT * H * 0.5;
-  const laneTop  = LANE_Y * H - halfLane;
-  const laneBot  = LANE_Y * H + halfLane;
-  // ±20 px variance (spec) — keeps player units near lane centre on spawn
-  const rawY     = LANE_Y * H + (Math.random() * 2 - 1) * 20;
-  const radius   = [0, 12, 16, 20][tier];
-  const y        = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
-  const x        = (PLAYER_BASE_X + BASE_WIDTH) * W + 20;
-  const unit     = new Unit('player', tier, x, y);
+  const W           = state.canvas.width;
+  const H           = state.canvas.height;
+  const laneCenter  = LANE_Y * H;
+  const halfLane    = LANE_HEIGHT * H * 0.5;
+  const laneTop     = laneCenter - halfLane;
+  const laneBot     = laneCenter + halfLane;
+
+  const isKnight = unitType === 'knight';
+  const isMage   = unitType === 'mage';
+
+  // Spawn x — knights guard near the player base; others appear just right of it
+  const x = isKnight
+    ? (PLAYER_BASE_X + BASE_WIDTH + 0.025) * W   // defensive: close to base
+    : (PLAYER_BASE_X + BASE_WIDTH) * W + 20;     // offensive / swarm: base edge
+
+  // Spawn y — mage units spread in a vertical cluster; others near lane centre
+  const rawY = isMage
+    ? laneCenter + (swarmOffset - 1) * 22          // offsets: −22, 0, +22 px
+    : laneCenter + (Math.random() * 2 - 1) * 20;
+
+  const radius = isMage ? 10 : [0, 12, 16, 20][tier];
+  const y      = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
+
+  const unit = new Unit('player', tier, x, y);
+
+  // Visual type
   if (unitType) unit.unitType = unitType;
+
+  // Movement role + patrol anchor
+  unit.role          = isKnight ? 'defensive' : isMage ? 'swarm' : 'offensive';
+  unit.patrolAnchorX = x;
+  unit.patrolAnchorY = laneCenter;   // lane centre — used for y-drift by offensive
+
+  // Swarm (mage) stat overrides — small, fast, fragile
+  if (isMage) {
+    unit.radius      = 10;
+    unit.hp          = 15;
+    unit.maxHp       = 15;
+    unit.damage      = 5;
+    unit.speed       = 85;
+    unit.attackSpeed = 1.5;
+    unit.range       = 45;
+  }
+
   state.units.push(unit);
 }
 
@@ -448,21 +489,31 @@ function update(dt) {
         }
       }
 
-      // ── Tablature spawn — gated by resources ─────────────────────────────
+      // ── Tablature spawn — gated by resources + top-level summon cooldown ──
       if (state.tablature.pendingSpawn !== null) {
-        const tier     = state.tablature.pendingSpawn;
-        const unitType = state.tablature.unitType || 'archer';
+        const now        = performance.now();
+        const tier       = state.tablature.pendingSpawn;
+        const unitType   = state.tablature.unitType || 'archer';
         const SUMMON_COST = [0, 50, 75, 100];
-        const cost = SUMMON_COST[tier] ?? 50;
-        if (state.resources >= cost) {
-          state.resources -= cost;
-          spawnPlayerUnit(tier, true, unitType);
-          console.log(`[summon] T${tier} ${unitType} spent ${cost} res → ${Math.floor(state.resources)} remaining`);
+        const cost       = SUMMON_COST[tier] ?? 50;
+        // Mage spawns 3 swarm units for the same resource cost
+        const spawnCount = (unitType === 'mage') ? 3 : 1;
+
+        if (now < (state.summonCooldownEnd || 0)) {
+          // Top-level cooldown still active — silently discard
+          console.log(`[summon] top-level cooldown active, discarding pendingSpawn`);
+        } else if (state.resources >= cost) {
+          state.resources        -= cost;
+          state.summonCooldownEnd = now + 500;   // 500 ms top-level gate
+          for (let si = 0; si < spawnCount; si++) {
+            spawnPlayerUnit(tier, true, unitType, si);
+          }
+          console.log(`SPAWN: ${unitType} cost:${cost} resources:${Math.floor(state.resources)}`);
         } else {
           // Trigger red-flash on summon bar
           state.tablature.blocked     = true;
-          state.tablature.blockedTime = performance.now();
-          console.log(`[summon] blocked T${tier}: need ${cost}, have ${Math.floor(state.resources)} → red flash`);
+          state.tablature.blockedTime = now;
+          console.log(`[summon] blocked: need ${cost}, have ${Math.floor(state.resources)}`);
         }
         state.tablature.pendingSpawn = null;
       }

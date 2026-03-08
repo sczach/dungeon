@@ -18,6 +18,7 @@ const DEFAULTS = Object.freeze({
   showChordCues:   true,
   showNoteLabels:  true,
   cueDisplayStyle: 'note',  // 'note' | 'qwerty' | 'staff'
+  instrument:      'piano', // 'piano' | 'guitar' | 'voice' (guitar/voice = Coming Soon)
 });
 
 // ─── CSS (injected once) ─────────────────────────────────────────────────────
@@ -146,6 +147,59 @@ const PANEL_CSS = `
     border-top: 1px solid #2a2a3a;
     margin: 14px 0;
   }
+  .cw-instrument-grid {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 6px 0;
+  }
+  .cw-instrument-tile {
+    width: 110px;
+    height: 90px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: #1e1e2e;
+    border: 2px solid #4a4060;
+    border-radius: 8px;
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.18s;
+    user-select: none;
+  }
+  .cw-instrument-tile.active {
+    border-color: #e8a030;
+    box-shadow: 0 0 14px rgba(232,160,48,0.35);
+  }
+  .cw-instrument-tile.disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .cw-instrument-tile:not(.disabled):hover {
+    border-color: #8a7060;
+  }
+  .cw-tile-icon {
+    font-size: 30px;
+    line-height: 1;
+  }
+  .cw-tile-name {
+    font-size: 11px;
+    color: #f0ead6;
+    letter-spacing: 0.5px;
+  }
+  .cw-tile-soon {
+    position: absolute;
+    top: 5px; right: 5px;
+    font-size: 8px;
+    background: #2a2040;
+    color: #8a7060;
+    padding: 2px 4px;
+    border-radius: 3px;
+    border: 1px solid #4a4060;
+    letter-spacing: 0.5px;
+  }
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,9 +235,11 @@ export class SettingsUI {
     state.showChordCues   = merged.showChordCues   ?? DEFAULTS.showChordCues;
     state.showNoteLabels  = merged.showNoteLabels  ?? DEFAULTS.showNoteLabels;
     state.cueDisplayStyle = merged.cueDisplayStyle || DEFAULTS.cueDisplayStyle;
+    state.instrument      = merged.instrument      || DEFAULTS.instrument;
     console.log('[settings] loaded: sensitivity=' + state.audioThreshold
       + ' noteLabels=' + state.showNoteLabels
-      + ' cueStyle=' + state.cueDisplayStyle);
+      + ' cueStyle=' + state.cueDisplayStyle
+      + ' instrument=' + state.instrument);
   }
 
   /**
@@ -198,6 +254,7 @@ export class SettingsUI {
       showChordCues:   state.showChordCues,
       showNoteLabels:  state.showNoteLabels,
       cueDisplayStyle: state.cueDisplayStyle || DEFAULTS.cueDisplayStyle,
+      instrument:      state.instrument      || DEFAULTS.instrument,
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
     console.log('[settings] saved to localStorage');
@@ -259,6 +316,28 @@ export class SettingsUI {
         <button class="cw-cue-btn" data-style="note">Note Names</button>
         <button class="cw-cue-btn" data-style="qwerty">QWERTY Keys</button>
         <button class="cw-cue-btn" data-style="staff">Staff</button>
+      </div>
+
+      <hr class="cw-sep">
+
+      <div class="cw-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
+        <span class="cw-label" style="color:#a09880;font-size:11px;">Instrument</span>
+        <div class="cw-instrument-grid">
+          <div class="cw-instrument-tile" data-instrument="piano" id="cw-inst-piano">
+            <span class="cw-tile-icon">🎹</span>
+            <span class="cw-tile-name">Piano</span>
+          </div>
+          <div class="cw-instrument-tile disabled" data-instrument="guitar" id="cw-inst-guitar" title="Coming Soon">
+            <span class="cw-tile-soon">Soon</span>
+            <span class="cw-tile-icon">🎸</span>
+            <span class="cw-tile-name">Guitar</span>
+          </div>
+          <div class="cw-instrument-tile disabled" data-instrument="voice" id="cw-inst-voice" title="Coming Soon">
+            <span class="cw-tile-soon">Soon</span>
+            <span class="cw-tile-icon">🎤</span>
+            <span class="cw-tile-name">Voice</span>
+          </div>
+        </div>
       </div>
 
       <hr class="cw-sep">
@@ -331,6 +410,17 @@ export class SettingsUI {
     });
     this._refreshCueStyle(panel, state.cueDisplayStyle || DEFAULTS.cueDisplayStyle);
 
+    // Instrument tiles — only Piano is clickable (Guitar/Voice are Coming Soon)
+    panel.querySelectorAll('.cw-instrument-tile:not(.disabled)').forEach((tile) => {
+      tile.addEventListener('click', () => {
+        state.instrument = tile.dataset.instrument;
+        this._refreshInstrument(panel, state.instrument);
+        this.saveSettings(state);
+        console.log('[settings] instrument →', state.instrument);
+      });
+    });
+    this._refreshInstrument(panel, state.instrument || DEFAULTS.instrument);
+
     // Start Game
     panel.querySelector('#cw-start-game-btn').addEventListener('click', () => {
       if (typeof onStart === 'function') onStart();
@@ -392,6 +482,12 @@ export class SettingsUI {
   _refreshCueStyle(panel, cueDisplayStyle) {
     panel.querySelectorAll('.cw-cue-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.style === cueDisplayStyle);
+    });
+  }
+
+  _refreshInstrument(panel, instrument) {
+    panel.querySelectorAll('.cw-instrument-tile').forEach((tile) => {
+      tile.classList.toggle('active', tile.dataset.instrument === instrument);
     });
   }
 }

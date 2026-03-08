@@ -236,9 +236,9 @@ export class Renderer {
     ctx.textBaseline = 'top';
     ctx.fillText('♪ SUMMON', BAR_X + 6, BAR_Y + 4);
 
-    // Unit type label — top-center of bar
+    // Unit type label — top-center of bar (Mage spawns ×3 swarm units)
     const _uType    = tab.unitType || 'archer';
-    const _typeLabel = _uType === 'mage' ? '🔮 Mage' : _uType === 'knight' ? '⚔ Knight' : '🏹 Archer';
+    const _typeLabel = _uType === 'mage' ? '🔮 Mage ×3' : _uType === 'knight' ? '⚔ Knight' : '🏹 Archer';
     ctx.font         = 'bold 9px Georgia, serif';
     ctx.fillStyle    = '#88aaff';
     ctx.textAlign    = 'center';
