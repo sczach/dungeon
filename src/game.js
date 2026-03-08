@@ -70,6 +70,7 @@ function createInitialState() {
       blocked:           false, // true when resource check failed (drives red flash)
       blockedTime:       0,     // performance.now() when blocked was set
       sequenceDoneTime:  0,     // performance.now() when all 3 notes completed; 0 = not done
+      unitType:          'archer', // set from first note of sequence: 'archer'|'knight'|'mage'
     },
 
     // ── Audio (written by audio subsystem + keyboard layer) ──
@@ -101,6 +102,11 @@ function createInitialState() {
     showChordCues:   true,       // show chord name + tab at top; overridden by loadSettings()
     cueDisplayStyle: 'note',     // 'note'|'qwerty'|'staff'; overridden by loadSettings()
     currentPrompt:   null,       // { chord, tab, difficulty } — set by PromptManager
+
+    // ── Combo — consecutive correct inputs; milestones grant bonus resources ──
+    combo:              0,
+    comboLastInputTime: 0,       // performance.now() of last note press (for decay)
+    comboBonusTime:     0,       // performance.now() when milestone bonus was awarded (for flash)
 
     // ── Resources — earned via kills, spent on summons ──
     resources:          200,     // start 200; no auto-tick; kills add 20/30/50
@@ -341,8 +347,9 @@ function spawnEnemyUnit() {
  * Silently fails if resources insufficient (when free=false).
  * @param {1|2|3}  tier
  * @param {boolean} [free=false] — if true, skips resource check/deduction (tablature spawn)
+ * @param {string|null} [unitType=null] — visual type: 'archer'|'knight'|'mage'|null
  */
-function spawnPlayerUnit(tier, free = false) {
+function spawnPlayerUnit(tier, free = false, unitType = null) {
   const COST = [0, 20, 50, 100];
   const cost = free ? 0 : COST[tier];
   if (state.resources < cost) return;
@@ -358,7 +365,9 @@ function spawnPlayerUnit(tier, free = false) {
   const radius   = [0, 12, 16, 20][tier];
   const y        = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
   const x        = (PLAYER_BASE_X + BASE_WIDTH) * W + 20;
-  state.units.push(new Unit('player', tier, x, y));
+  const unit     = new Unit('player', tier, x, y);
+  if (unitType) unit.unitType = unitType;
+  state.units.push(unit);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -432,15 +441,23 @@ function update(dt) {
         spawnEnemyUnit();
       }
 
+      // ── Combo decay (4 s of no input resets combo to 0) ──────────────────
+      if (state.combo > 0 && state.comboLastInputTime > 0) {
+        if (performance.now() - state.comboLastInputTime > 4000) {
+          state.combo = 0;
+        }
+      }
+
       // ── Tablature spawn — gated by resources ─────────────────────────────
       if (state.tablature.pendingSpawn !== null) {
-        const tier = state.tablature.pendingSpawn;
+        const tier     = state.tablature.pendingSpawn;
+        const unitType = state.tablature.unitType || 'archer';
         const SUMMON_COST = [0, 50, 75, 100];
         const cost = SUMMON_COST[tier] ?? 50;
         if (state.resources >= cost) {
           state.resources -= cost;
-          spawnPlayerUnit(tier, true);
-          console.log(`[summon] T${tier} spent ${cost} res → ${Math.floor(state.resources)} remaining`);
+          spawnPlayerUnit(tier, true, unitType);
+          console.log(`[summon] T${tier} ${unitType} spent ${cost} res → ${Math.floor(state.resources)} remaining`);
         } else {
           // Trigger red-flash on summon bar
           state.tablature.blocked     = true;
@@ -463,6 +480,15 @@ function update(dt) {
             const EARN = [0, 20, 30, 50];
             state.resources = Math.min(200, state.resources + EARN[u.tier]);
             console.log(`[kill] T${u.tier} +${EARN[u.tier]} res → ${Math.floor(state.resources)}`);
+            // Kill increments combo
+            state.combo = (state.combo || 0) + 1;
+            state.comboLastInputTime = performance.now();
+            const COMBO_MILESTONES = [5, 10, 20];
+            if (COMBO_MILESTONES.includes(state.combo)) {
+              state.resources   = Math.min(999, state.resources + 25);
+              state.comboBonusTime = performance.now();
+              console.log(`[combo] milestone ${state.combo} → +25 bonus resources`);
+            }
             // Kill melody — throttled to ≤ 1 per 800 ms
             const now = performance.now();
             if (u.attackSeq && u.attackSeq.length > 0 &&
@@ -504,7 +530,14 @@ document.addEventListener('visibilitychange', () => {
 setScene(SCENE.TITLE);
 wireButtons();
 settingsUI.render(state, startGame);
-initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note));
+initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) => {
+  if (state.scene !== SCENE.PLAYING) return;
+  if (state.inputMode === mode) return;
+  state.inputMode    = mode;
+  state.modeAnnounce = performance.now();
+  if (mode === 'summon') tablatureSystem.refresh(state);
+  console.log(`[mode] tapped → ${mode}`);
+});
 
 requestAnimationFrame((ts) => {
   lastTimestamp = ts;
