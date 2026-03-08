@@ -59,6 +59,19 @@ export class Unit {
   constructor(team, tier, x, y) {
     const stats = TIER_STATS[tier];
 
+    // Guard: invalid tier (e.g. prompts system passing wrong args) — create
+    // a dead no-op unit rather than crashing on stats.hp.
+    if (!stats) {
+      console.error(`[unit] invalid tier "${tier}" (team=${team}) — skipping`);
+      this.team = team; this.tier = 1; this.x = x || 0; this.y = y || 0;
+      this.hp = 0; this.maxHp = 0; this.damage = 0; this.speed = 0;
+      this.range = 0; this.attackSpeed = 1; this.radius = 12;
+      this.attackCooldown = 0; this.alive = false; this.marching = false;
+      this.attackSeq = null; this.attackSeqProgress = 0;
+      this.stunned = false; this.stunTimer = 0;
+      return;
+    }
+
     this.team  = team;
     this.tier  = tier;
     this.x     = x;

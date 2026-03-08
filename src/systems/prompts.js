@@ -151,7 +151,10 @@ export class PromptManager {
     const x    = W * 0.15;
     const y    = H * 0.2 + Math.random() * (H * 0.6);
 
-    state.units.push(new Unit(x, y, type));
+    // Map unit type → tier so Unit(team, tier, x, y) gets valid args
+    const TYPE_TO_TIER = { Shield: 1, Archer: 1, Swordsman: 2, Mage: 2, Healer: 2, Lancer: 3 };
+    const tier = TYPE_TO_TIER[type] || 1;
+    state.units.push(new Unit('player', tier, x, y));
 
     // Record debounce timestamp for this chord
     this._lastSpawnTime[chord] = state.time;
