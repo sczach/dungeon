@@ -56,7 +56,7 @@ const MISS_FLASH_MS     = 350;
 /** Delay after all 3 notes hit before generating the next sequence. */
 const SEQUENCE_DONE_MS  = 600;
 /** Cooldown between successful spawns (ms). Anti-mashing mechanic. */
-const SUMMON_COOLDOWN_MS = 2000;
+const SUMMON_COOLDOWN_MS = 500;
 /** Maximum simultaneous player units. Spawn blocked (but combo continues) at cap. */
 const MAX_PLAYER_UNITS  = 8;
 /** How long the "not enough resources" red-flash stays visible (ms). */

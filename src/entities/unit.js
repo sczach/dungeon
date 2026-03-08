@@ -4,42 +4,40 @@
  *
  * TEAM BEHAVIOUR
  * ──────────────
- *   'player' — spawns near player base, marches right toward enemy base
- *   'enemy'  — spawns near enemy base,  marches left  toward player base
+ *   'player' — spawns near player base; role determines movement
+ *   'enemy'  — spawns near enemy base; marches left toward player base
+ *
+ * PLAYER UNIT ROLES
+ * ─────────────────
+ *   'offensive' (Archer)
+ *     Advances horizontally through lane centre toward enemy base.
+ *     Drifts y toward lane centre.  Attacks enemies in range.
+ *
+ *   'defensive' (Knight)
+ *     Spawns near player base.  Patrols ±80 px around anchor.
+ *     Priority target: enemy with lowest x (closest to player base).
+ *     Does NOT advance beyond anchor + 80 px.
+ *
+ *   'swarm' (Mage ×3)
+ *     Small unit (r=10, overridden by game.js).
+ *     Seeks nearest enemy in full 2D.  Falls back to enemy base.
  *
  * TIER STATS
  * ──────────
  *   Tier 1 — 30 hp,  8 dmg, 60 px/s, 50 px range, 1.0 atk/s, r=12
  *   Tier 2 — 60 hp, 15 dmg, 45 px/s, 60 px range, 0.8 atk/s, r=16
  *   Tier 3 — 120 hp, 25 dmg, 35 px/s, 70 px range, 0.6 atk/s, r=20
+ *   Swarm  — stats overridden in game.js after construction
  *
- *   Note: enemy units have their speed halved in game.js (unit.speed *= 0.5)
- *   after construction, so the TIER_STATS values apply at full strength only
- *   to player units.
- *
- * UNIT AI  (update method)
- * ────────────────────────
- *   Priority order each tick:
- *   1. If stunned: freeze (marching = false, no attack, no move)
- *   2. findTarget() — nearest enemy unit within 2× attackRange
- *      → If found: move toward it at speed (2D angle), attack when in attackRange
- *   3. Fall back to enemy base:
- *      → If in attackRange: stop and attack base
- *      → Otherwise: march horizontally toward base (y stays fixed)
- *
- * ATTACK SEQUENCE  (assigned externally by AttackSequenceSystem)
- * ──────────────────────────────────────────────────────────────
- *   unit.attackSeq         — string[] note names the player must press
- *   unit.attackSeqProgress — index of next note to match (0 = full seq pending)
- *   unit.stunned           — true while stun effect is active
- *   unit.stunTimer         — seconds of stun remaining (ticked by AttackSequenceSystem)
- *
- * ZERO-ALLOCATION hot path
- * ─────────────────────────
- *   update() uses only local scalars and indexed for-loops.
- *   Math.sqrt is called at most once per unit per frame (when steering to a unit target)
- *   — this is acceptable for ≤ ~20 units and is not a memory allocation.
+ * LANE CLAMPING
+ * ─────────────
+ *   All units are clamped to the combat strip at the end of every update().
+ *   Lane centre  = bases.player.y        (= LANE_Y × H)
+ *   Lane half-H  = laneCenter × (LANE_HEIGHT / LANE_Y) × 0.5
+ *   (derived from base y so we never need to pass canvas H explicitly)
  */
+
+import { LANE_Y, LANE_HEIGHT } from '../constants.js';
 
 /** @type {Array<null|{hp,damage,speed,range,attackSpeed,radius}>} */
 const TIER_STATS = [
@@ -59,8 +57,7 @@ export class Unit {
   constructor(team, tier, x, y) {
     const stats = TIER_STATS[tier];
 
-    // Guard: invalid tier (e.g. prompts system passing wrong args) — create
-    // a dead no-op unit rather than crashing on stats.hp.
+    // Guard: invalid tier — create a dead no-op unit rather than crashing
     if (!stats) {
       console.error(`[unit] invalid tier "${tier}" (team=${team}) — skipping`);
       this.team = team; this.tier = 1; this.x = x || 0; this.y = y || 0;
@@ -69,6 +66,10 @@ export class Unit {
       this.attackCooldown = 0; this.alive = false; this.marching = false;
       this.attackSeq = null; this.attackSeqProgress = 0;
       this.stunned = false; this.stunTimer = 0;
+      this.unitType = null;
+      this.role = null;
+      this.patrolAnchorX = x || 0;
+      this.patrolAnchorY = y || 0;
       return;
     }
 
@@ -86,32 +87,37 @@ export class Unit {
     this.radius         = stats.radius;
     this.attackCooldown = 0;
     this.alive          = true;
+    this.marching       = true;
 
-    /** True only while actively advancing toward the enemy side. */
-    this.marching = true;
-
-    // ── Attack sequence (assigned by AttackSequenceSystem on enemy spawn) ─
+    // ── Attack sequence (assigned by AttackSequenceSystem on enemy spawn) ──
     /** @type {string[]|null} */
     this.attackSeq         = null;
     this.attackSeqProgress = 0;
     this.stunned           = false;
     this.stunTimer         = 0;
+
     /** Visual unit type for player units: 'archer' | 'knight' | 'mage' | null */
-    this.unitType          = null;
+    this.unitType = null;
+
+    /** Movement role: 'offensive' | 'defensive' | 'swarm' | null (enemy) */
+    this.role = null;
+
+    /**
+     * Patrol / lane anchor (set by game.js at spawn time).
+     * Defensive: patrol centre x; Offensive/Swarm: lane centre y.
+     */
+    this.patrolAnchorX = x;
+    this.patrolAnchorY = y;
   }
 
   /**
    * Find the highest-priority combat target — the nearest enemy unit within
-   * 2× attackRange.  Returns the enemy base as a fallback when no unit qualifies.
-   *
-   * Using 2× range as the "lock-on" radius encourages proactive steering
-   * toward nearby enemies before they're right on top of each other, which
-   * reduces blob-stacking artifacts.
+   * 2× attackRange.  Returns the enemy base as a fallback.
    *
    * ZERO ALLOCATION: indexed for-loop only.
    *
-   * @param {Unit[]}  allUnits  — full state.units array (both teams)
-   * @param {import('../systems/base.js').Base} enemyBase — this unit's target base
+   * @param {Unit[]}  allUnits
+   * @param {import('../systems/base.js').Base} enemyBase
    * @returns {Unit|import('../systems/base.js').Base}
    */
   findTarget(allUnits, enemyBase) {
@@ -137,8 +143,6 @@ export class Unit {
   /**
    * Per-frame simulation step.
    *
-   * ZERO ALLOCATION: all intermediate values are local scalars.
-   *
    * @param {number} dt         — delta time in seconds
    * @param {Unit[]} allUnits   — state.units reference (both teams, not copied)
    * @param {{player: import('../systems/base.js').Base,
@@ -156,17 +160,55 @@ export class Unit {
     if (this.attackCooldown > 0) this.attackCooldown -= dt;
 
     const targetBase = this.team === 'player' ? bases.enemy : bases.player;
-    const target     = this.findTarget(allUnits, targetBase);
-    const atkR2      = this.range * this.range;
+
+    // ── 2. Role-specific movement ─────────────────────────────────────────
+    if (this.team === 'player' && this.role === 'defensive') {
+      this._updateDefensive(dt, allUnits);
+    } else if (this.team === 'player' && this.role === 'swarm') {
+      this._updateSwarm(dt, allUnits, targetBase);
+    } else {
+      // Offensive player units and all enemies: standard march + target logic
+      this._updateMarcher(dt, allUnits, targetBase);
+
+      // Offensive player units drift y toward lane centre for clean advance
+      if (this.team === 'player' && this.role === 'offensive') {
+        const dy = this.patrolAnchorY - this.y;
+        if (Math.abs(dy) > 3) {
+          this.y += Math.sign(dy) * Math.min(Math.abs(dy), this.speed * 0.4 * dt);
+        }
+      }
+    }
+
+    // ── 3. Lane y-clamping for all live units ─────────────────────────────
+    // Lane centre = bases.player.y = LANE_Y × H
+    // Half-height = laneCenter × (LANE_HEIGHT / LANE_Y) × 0.5
+    if (bases.player) {
+      const laneCenter = bases.player.y;
+      const halfH      = laneCenter * (LANE_HEIGHT / LANE_Y) * 0.5;
+      const minY = laneCenter - halfH + this.radius;
+      const maxY = laneCenter + halfH - this.radius;
+      if (this.y < minY) this.y = minY;
+      else if (this.y > maxY) this.y = maxY;
+    }
+  }
+
+  // ── Private: standard march AI ───────────────────────────────────────────
+
+  /**
+   * Default marching AI used by enemies and offensive player units.
+   * Finds nearest target, steers toward it; falls back to marching at base.
+   */
+  _updateMarcher(dt, allUnits, targetBase) {
+    const target = this.findTarget(allUnits, targetBase);
+    const atkR2  = this.range * this.range;
 
     if (target !== targetBase) {
-      // ── 2a. Unit target found: steer toward it in 2D, attack when in range
-      const dx   = target.x - this.x;
-      const dy   = target.y - this.y;
-      const d2   = dx * dx + dy * dy;
+      // Unit target: steer in 2D, attack when in range
+      const dx = target.x - this.x;
+      const dy = target.y - this.y;
+      const d2 = dx * dx + dy * dy;
 
       if (d2 <= atkR2) {
-        // In attack range: hold position
         this.marching = false;
         if (this.attackCooldown <= 0) {
           target.hp -= this.damage;
@@ -174,33 +216,143 @@ export class Unit {
           this.attackCooldown = 1 / this.attackSpeed;
         }
       } else {
-        // Steer toward target unit using normalised direction vector
         this.marching   = true;
-        const dist      = Math.sqrt(d2);  // one sqrt per unit per frame — acceptable
-        const nx        = dx / dist;
-        const ny        = dy / dist;
-        this.x         += nx * this.speed * dt;
-        this.y         += ny * this.speed * dt;
+        const dist      = Math.sqrt(d2);
+        this.x         += (dx / dist) * this.speed * dt;
+        this.y         += (dy / dist) * this.speed * dt;
       }
     } else {
-      // ── 2b. No unit in lock-on radius — approach the enemy base ──────────
+      // No unit in lock-on radius — approach the enemy base
       const bx  = targetBase.x - this.x;
       const by  = targetBase.y - this.y;
       const bd2 = bx * bx + by * by;
 
       if (bd2 <= atkR2) {
-        // At base: stop and attack
         this.marching = false;
         if (this.attackCooldown <= 0) {
           targetBase.takeDamage(this.damage);
           this.attackCooldown = 1 / this.attackSpeed;
         }
       } else {
-        // Clear path — march horizontally (y stays fixed, preserving spawn variance)
         this.marching  = true;
         const dir      = this.team === 'player' ? 1 : -1;
         this.x        += dir * this.speed * dt;
       }
+    }
+  }
+
+  // ── Private: defensive (Knight) AI ───────────────────────────────────────
+
+  /**
+   * Defensive role: guards the player base.
+   * - Priority target: enemy with lowest x (closest to player base)
+   * - In attack range: hold position and attack
+   * - In detection range (2.5× attack range): move toward target,
+   *   x clamped to [anchorX − 80, anchorX + 80] (never advances too far)
+   * - Otherwise: return to patrol anchor
+   */
+  _updateDefensive(dt, allUnits) {
+    const atkR2 = this.range * this.range;
+    const detR  = this.range * 2.5;
+    const detR2 = detR * detR;
+
+    // Find the enemy closest to the player base (lowest x)
+    let bestTarget = null;
+    let lowestX    = Infinity;
+    for (let i = 0; i < allUnits.length; i++) {
+      const u = allUnits[i];
+      if (!u.alive || u.team === this.team) continue;
+      if (u.x < lowestX) { lowestX = u.x; bestTarget = u; }
+    }
+
+    if (bestTarget) {
+      const dx = bestTarget.x - this.x;
+      const dy = bestTarget.y - this.y;
+      const d2 = dx * dx + dy * dy;
+
+      if (d2 <= atkR2) {
+        // In attack range: hold and attack
+        this.marching = false;
+        if (this.attackCooldown <= 0) {
+          bestTarget.hp -= this.damage;
+          if (bestTarget.hp <= 0) bestTarget.alive = false;
+          this.attackCooldown = 1 / this.attackSpeed;
+        }
+      } else if (d2 <= detR2) {
+        // In detection range: move toward target, clamped to patrol zone
+        this.marching   = true;
+        const dist      = Math.sqrt(d2);
+        const nx        = dx / dist;
+        const ny        = dy / dist;
+        const newX      = this.x + nx * this.speed * dt;
+        const newY      = this.y + ny * this.speed * dt;
+        // Hard cap: defensive units never wander more than 80 px from anchor
+        this.x = Math.max(this.patrolAnchorX - 80, Math.min(this.patrolAnchorX + 80, newX));
+        this.y = newY;
+      } else {
+        this._returnToAnchor(dt);
+      }
+    } else {
+      this._returnToAnchor(dt);
+    }
+  }
+
+  // ── Private: swarm (Mage ×3) AI ──────────────────────────────────────────
+
+  /**
+   * Swarm role: seeks nearest enemy in unrestricted 2D; falls back to enemy base.
+   */
+  _updateSwarm(dt, allUnits, targetBase) {
+    // Seek nearest enemy (any range — no lock-on threshold)
+    let nearest   = null;
+    let nearestD2 = Infinity;
+    for (let i = 0; i < allUnits.length; i++) {
+      const u = allUnits[i];
+      if (!u.alive || u.team === this.team) continue;
+      const dx = u.x - this.x;
+      const dy = u.y - this.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < nearestD2) { nearestD2 = d2; nearest = u; }
+    }
+
+    const target = nearest ?? targetBase;
+    const dx     = target.x - this.x;
+    const dy     = target.y - this.y;
+    const d2     = dx * dx + dy * dy;
+    const atkR2  = this.range * this.range;
+
+    if (d2 <= atkR2) {
+      this.marching = false;
+      if (this.attackCooldown <= 0) {
+        if (target === targetBase) {
+          targetBase.takeDamage(this.damage);
+        } else {
+          target.hp -= this.damage;
+          if (target.hp <= 0) target.alive = false;
+        }
+        this.attackCooldown = 1 / this.attackSpeed;
+      }
+    } else {
+      this.marching   = true;
+      const dist      = Math.sqrt(d2);
+      this.x         += (dx / dist) * this.speed * dt;
+      this.y         += (dy / dist) * this.speed * dt;
+    }
+  }
+
+  // ── Private: return to patrol anchor ─────────────────────────────────────
+
+  _returnToAnchor(dt) {
+    const dx = this.patrolAnchorX - this.x;
+    const dy = this.patrolAnchorY - this.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > 25) {
+      this.marching   = true;
+      const dist      = Math.sqrt(d2);
+      this.x         += (dx / dist) * this.speed * dt;
+      this.y         += (dy / dist) * this.speed * dt;
+    } else {
+      this.marching = false;
     }
   }
 }
