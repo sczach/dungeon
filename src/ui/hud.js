@@ -253,7 +253,7 @@ export function initPianoTouchInput(canvas, onNote) {
     const { x, y } = coordsFromMouse(e);
     console.log('[mouse/touch] detected at x:' + x.toFixed(1) + ' y:' + y.toFixed(1));
     const note = getKeyAtPoint(x, y, canvas.offsetWidth, canvas.offsetHeight);
-    console.log('[mouse/touch] computed note: ' + (note || 'null - no hit'));
+    console.log('[mouse/touch] detected note: ' + (note || 'NO HIT'));
     if (note) onNote(note);
   }
   function onTouchStart(e) {
@@ -265,11 +265,11 @@ export function initPianoTouchInput(canvas, onNote) {
     const py = t.clientY - r.top;
     console.log('[mouse/touch] detected at x:' + px.toFixed(1) + ' y:' + py.toFixed(1));
     const note = getKeyAtPoint(px, py, canvas.offsetWidth, canvas.offsetHeight);
-    console.log('[mouse/touch] computed note: ' + (note || 'null - no hit'));
+    console.log('[mouse/touch] detected note: ' + (note || 'NO HIT'));
     if (note) onNote(note);
   }
   canvas.style.pointerEvents = 'auto';
   canvas.addEventListener('click', onClick);
   canvas.addEventListener('touchstart', onTouchStart, { passive: false });
-  console.log('[touch init] registered listeners');
+  console.log('[touch init] listeners attached to canvas');
 }

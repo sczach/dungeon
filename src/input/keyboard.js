@@ -125,7 +125,7 @@ export function playSuccessKill(notes) {
     const t = t0 + i * MELODY_STEP;
     osc.start(t);
     osc.stop(t + TONE_DURATION);
-    console.log('[kill melody] scheduling note ' + note + ' at ' + t.toFixed(3) + 's');
+    console.log('[kill melody] scheduling ' + note + ' at t+' + (0.02 + i * 0.15).toFixed(3) + 's');
   });
   // Disconnect reverb tail after all notes + tail decay
   const cleanupMs = (notes.length * MELODY_STEP + TONE_DURATION + 1.5) * 1000;
@@ -175,7 +175,7 @@ export class KeyboardInput {
   dispatchNote(note) {
     const state = this._state;
     if (!state || state.scene !== SCENE.PLAYING) return;
-    console.log('[dispatch] note ' + note + ' in mode ' + state.inputMode);
+    console.log('[dispatch] note ' + note + ' mode ' + state.inputMode);
     this._handleNote(note, state);
   }
 
