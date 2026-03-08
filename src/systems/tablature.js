@@ -43,6 +43,10 @@ const MISS_RESET_MS = 300;
 const SUMMON_COOLDOWN_MS = 2000;
 /** Maximum simultaneous player units. Spawn blocked (but combo continues) at cap. */
 const MAX_PLAYER_UNITS = 8;
+/** How long the "not enough resources" red-flash stays visible (ms). */
+const BLOCKED_FLASH_MS = 600;
+/** How often the 3-note prompt auto-refreshes if player doesn't complete it (ms). */
+const PROMPT_REFRESH_MS = 10000;
 
 export class TablatureSystem {
   /**
@@ -57,6 +61,9 @@ export class TablatureSystem {
     tab.activeIndex      = 0;   // always 0 — leftmost slot is always active
     tab.pendingSpawn     = null;
     tab.summonCooldownEnd = 0;  // performance.now() when cooldown expires; 0 = none
+    tab.nextRefreshTime  = 0;   // performance.now() when 3-note prompt auto-refreshes
+    tab.blocked          = false; // true = resource check failed; drives red flash
+    tab.blockedTime      = 0;   // performance.now() when blocked was set
     this._fillQueue(tab);
   }
 
@@ -68,10 +75,11 @@ export class TablatureSystem {
    */
   update(_dt, state) {
     const tab = state.tablature;
+    const now = performance.now();
+
     if (!tab.queue.length) { this._fillQueue(tab); return; }
 
     const slot = tab.queue[0];
-    const now  = performance.now();
 
     if (slot.status === 'hit' && (now - slot.statusTime) >= HIT_FLASH_MS) {
       tab.queue.shift();          // advance (event-driven alloc — fine)
@@ -79,6 +87,19 @@ export class TablatureSystem {
     } else if (slot.status === 'miss' && (now - slot.statusTime) >= MISS_RESET_MS) {
       tab.queue = [];             // reset (event-driven alloc — fine)
       this._fillQueue(tab);
+    }
+
+    // Auto-refresh 3-note prompt every PROMPT_REFRESH_MS even if not completed
+    if (tab.nextRefreshTime > 0 && now >= tab.nextRefreshTime) {
+      tab.queue = [];
+      tab.combo = 0;
+      this._fillQueue(tab);
+      console.log('[summon] prompt auto-refreshed (10s timer)');
+    }
+
+    // Clear resource-blocked red flash after BLOCKED_FLASH_MS
+    if (tab.blocked && (now - tab.blockedTime) >= BLOCKED_FLASH_MS) {
+      tab.blocked = false;
     }
   }
 
@@ -138,11 +159,29 @@ export class TablatureSystem {
     }
   }
 
+  /**
+   * Discard the current prompt and generate a fresh 3-note sequence immediately.
+   * Called on mode toggle (Space bar) to give the player a clean slate.
+   * @param {object} state
+   */
+  refresh(state) {
+    const tab = state.tablature;
+    tab.queue  = [];
+    tab.combo  = 0;
+    tab.blocked = false;
+    this._fillQueue(tab);
+    console.log('[summon] prompt refreshed (mode toggle)');
+  }
+
   // ── Private ─────────────────────────────────────────────────────────────
 
-  /** Append random slots until the queue has exactly 6 entries. */
+  /**
+   * Append random slots until the queue has exactly 3 entries.
+   * Sets the auto-refresh timer whenever the queue was empty (fresh prompt).
+   */
   _fillQueue(tab) {
-    while (tab.queue.length < 6) {
+    const wasEmpty = tab.queue.length === 0;
+    while (tab.queue.length < 3) {
       const i = Math.floor(Math.random() * WHITE_NOTES.length);
       tab.queue.push({
         note:       WHITE_NOTES[i],
@@ -150,6 +189,10 @@ export class TablatureSystem {
         status:     'pending',   // 'pending' | 'hit' | 'miss'
         statusTime: 0,
       });
+    }
+    if (wasEmpty) {
+      tab.nextRefreshTime = performance.now() + PROMPT_REFRESH_MS;
+      console.log('[summon] new 3-note prompt generated:', tab.queue.map(s => s.note).join('-'));
     }
   }
 }

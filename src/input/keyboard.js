@@ -110,6 +110,7 @@ export function playSuccessKill(notes) {
   feedback.connect(delay);
   delay.connect(ctx.destination);
   const t0 = ctx.currentTime + 0.02;
+  console.log(`[kill melody] staggering ${notes.length} notes @ ${MELODY_STEP}s apart: ${notes.join(' ')}`);
   notes.forEach((note, i) => {
     const freq = getNoteFreq(note);
     if (!freq) return;
@@ -124,8 +125,8 @@ export function playSuccessKill(notes) {
     const t = t0 + i * MELODY_STEP;
     osc.start(t);
     osc.stop(t + TONE_DURATION);
+    console.log(`[kill melody] note ${i}: ${note} @ +${(i * MELODY_STEP).toFixed(2)}s`);
   });
-  console.log(`[kill melody] ${notes.join(' ')}`);
   // Disconnect reverb tail after all notes + tail decay
   const cleanupMs = (notes.length * MELODY_STEP + TONE_DURATION + 1.5) * 1000;
   setTimeout(() => {
@@ -174,6 +175,7 @@ export class KeyboardInput {
   dispatchNote(note) {
     const state = this._state;
     if (!state || state.scene !== SCENE.PLAYING) return;
+    console.log('[mouse/click] dispatched note: ' + note);
     this._handleNote(note, state);
   }
 
@@ -190,6 +192,10 @@ export class KeyboardInput {
       const next         = state.inputMode === 'summon' ? 'attack' : 'summon';
       state.inputMode    = next;
       state.modeAnnounce = performance.now();
+      // Refresh summon prompt on entry so player gets a fresh sequence
+      if (next === 'summon' && this._tablature) {
+        this._tablature.refresh(state);
+      }
       console.log(`[mode] → ${next}`);
       return;
     }

@@ -416,9 +416,12 @@ function update(dt) {
         if (state.resources >= cost) {
           state.resources -= cost;
           spawnPlayerUnit(tier, true);
-          console.log(`[summon] T${tier} cost ${cost} res → ${Math.floor(state.resources)}`);
+          console.log(`[summon] T${tier} spent ${cost} res → ${Math.floor(state.resources)} remaining`);
         } else {
-          console.log(`[summon] blocked T${tier}: need ${cost}, have ${Math.floor(state.resources)}`);
+          // Trigger red-flash on summon bar
+          state.tablature.blocked     = true;
+          state.tablature.blockedTime = performance.now();
+          console.log(`[summon] blocked T${tier}: need ${cost}, have ${Math.floor(state.resources)} → red flash`);
         }
         state.tablature.pendingSpawn = null;
       }
@@ -476,7 +479,7 @@ document.addEventListener('visibilitychange', () => {
 
 setScene(SCENE.TITLE);
 wireButtons();
-wireSettingsUI(state);
+wireSettingsUI(state, startGame);
 initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note));
 
 requestAnimationFrame((ts) => {

@@ -35,9 +35,10 @@ export function saveSettings(state) {
  * The overlay is shown only when [data-scene="title"] is on <body>.
  * Calling this more than once is safe (skips if already injected).
  *
- * @param {object} state — canonical game state (mutated by settings changes)
+ * @param {object}   state   — canonical game state (mutated by settings changes)
+ * @param {function} [onStart] — called when the "Start Game" button is clicked
  */
-export function wireSettingsUI(state) {
+export function wireSettingsUI(state, onStart) {
   if (document.getElementById('cw-settings-overlay')) return; // idempotent
 
   // ── Styles ───────────────────────────────────────────────────────────────
@@ -89,6 +90,9 @@ export function wireSettingsUI(state) {
     <div class="row">
       <button id="cw-labels">Note Labels: OFF</button>
     </div>
+    <div class="row" style="margin-top:16px;">
+      <button id="cw-start-game" style="background:#1a3a1a;border-color:#44ff88;color:#44ff88;font-size:14px;padding:8px 28px;letter-spacing:1px;">▶ Start Game</button>
+    </div>
   `;
   document.body.appendChild(overlay);
 
@@ -110,9 +114,16 @@ export function wireSettingsUI(state) {
     console.log(`[settings] showNoteLabels → ${state.showNoteLabels}`);
   });
 
+  // ── Start Game button ─────────────────────────────────────────────────────
+  document.getElementById('cw-start-game')?.addEventListener('click', () => {
+    console.log('[settings] Start Game clicked');
+    if (onStart) onStart();
+  });
+
   // Set initial visual state
   _refreshDiff(state.difficulty);
   _refreshLabels(state.showNoteLabels);
+  console.log('[settings] overlay wired');
 }
 
 function _refreshDiff(difficulty) {

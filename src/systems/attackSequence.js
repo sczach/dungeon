@@ -26,7 +26,7 @@
  */
 
 /** Note pool for sequence generation (white keys, base octave). */
-const NOTE_POOL    = ['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3', 'C4'];
+const NOTE_POOL    = ['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3']; // locked to C3 octave
 
 /** Sequence lengths by tier (index 0 unused). */
 const SEQ_LENGTHS  = [0, 2, 3, 5];
