@@ -39,7 +39,7 @@ export function saveSettings(state) {
  * @param {function} [onStart] — called when the "Start Game" button is clicked
  */
 export function wireSettingsUI(state, onStart) {
-  console.log('[settings] wireSettingsUI called');
+  console.log('[settings] attempting to wire overlay');
   if (document.getElementById('cw-settings-overlay')) return; // idempotent
 
   // ── Styles ───────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ export function wireSettingsUI(state, onStart) {
     </div>
   `;
   document.body.appendChild(overlay);
-  console.log('[settings] overlay injected');
+  console.log('[settings] overlay appended to body');
 
   // ── Difficulty buttons ────────────────────────────────────────────────────
   for (const level of DIFFICULTIES) {
