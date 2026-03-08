@@ -192,7 +192,7 @@ export class TablatureSystem {
     }
     if (wasEmpty) {
       tab.nextRefreshTime = performance.now() + PROMPT_REFRESH_MS;
-      console.log('[summon] new 3-note prompt generated:', tab.queue.map(s => s.note).join('-'));
+      console.log('[summon prompt] new: ' + tab.queue.map(s => s.note).join(' '));
     }
   }
 }

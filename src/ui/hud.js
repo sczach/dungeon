@@ -251,28 +251,25 @@ export function initPianoTouchInput(canvas, onNote) {
   }
   function onClick(e) {
     const { x, y } = coordsFromMouse(e);
+    console.log('[mouse/touch] detected at x:' + x.toFixed(1) + ' y:' + y.toFixed(1));
     const note = getKeyAtPoint(x, y, canvas.offsetWidth, canvas.offsetHeight);
-    console.log(`[mouse/click] px=${x.toFixed(1)} py=${y.toFixed(1)} → ${note ?? 'miss'}`);
-    if (note) {
-      console.log('[mouse/click] hit note: ' + note);
-      onNote(note);
-    }
+    console.log('[mouse/touch] computed note: ' + (note || 'null - no hit'));
+    if (note) onNote(note);
   }
   function onTouchStart(e) {
     e.preventDefault();   // block ghost clicks & page scroll on mobile / iOS
     const t = e.touches[0];
     if (!t) return;
-    const r    = canvas.getBoundingClientRect();
-    const px   = t.clientX - r.left;
-    const py   = t.clientY - r.top;
+    const r  = canvas.getBoundingClientRect();
+    const px = t.clientX - r.left;
+    const py = t.clientY - r.top;
+    console.log('[mouse/touch] detected at x:' + px.toFixed(1) + ' y:' + py.toFixed(1));
     const note = getKeyAtPoint(px, py, canvas.offsetWidth, canvas.offsetHeight);
-    console.log(`[touch] px=${px.toFixed(1)} py=${py.toFixed(1)} → ${note ?? 'miss'}`);
-    if (note) {
-      console.log('[mouse/click] hit note: ' + note);
-      onNote(note);
-    }
+    console.log('[mouse/touch] computed note: ' + (note || 'null - no hit'));
+    if (note) onNote(note);
   }
+  canvas.style.pointerEvents = 'auto';
   canvas.addEventListener('click', onClick);
   canvas.addEventListener('touchstart', onTouchStart, { passive: false });
-  console.log('[touch init] registered');
+  console.log('[touch init] registered listeners');
 }

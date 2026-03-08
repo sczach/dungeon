@@ -132,7 +132,7 @@ function setScene(scene) {
   state.scene = scene;
   document.body.dataset.scene = scene;
   console.log(`[scene] → ${scene}`);
-  if (scene === SCENE.TITLE) console.log('[scene] TITLE entered');
+  if (scene === SCENE.TITLE) console.log('[scene change] TITLE entered');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

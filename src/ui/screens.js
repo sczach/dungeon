@@ -60,7 +60,7 @@ export function wireSettingsUI(state, onStart) {
       text-align: center;
       min-width: 280px;
     }
-    body[data-scene="title"] #cw-settings-overlay { display: block; }
+    body[data-scene="title"] #cw-settings-overlay { display: block !important; }
     #cw-settings-overlay h4 {
       margin: 0 0 12px; font-size: 14px; letter-spacing: 1px; color: #e8a030;
     }
@@ -96,6 +96,7 @@ export function wireSettingsUI(state, onStart) {
     </div>
   `;
   document.body.appendChild(overlay);
+  console.log('[settings] overlay injected');
 
   // ── Difficulty buttons ────────────────────────────────────────────────────
   for (const level of DIFFICULTIES) {
