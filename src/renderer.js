@@ -50,12 +50,25 @@ const NOTE_TO_STAFF_POS = Object.freeze({
   'C4': 7,  // fallback if attackSequence.js still uses C4
 });
 
+/** Human-readable description of the enemy composition for each wave range. */
+function waveDescription(wave) {
+  if (wave <= 2)  return 'Grunt scouts approaching';
+  if (wave <= 4)  return 'Grunt forces on the march';
+  if (wave <= 6)  return 'Grunts & Brutes closing in!';
+  if (wave <= 8)  return 'Elite Brutes — stay sharp!';
+  if (wave === 9) return 'Titan assault incoming!';
+  return 'FINAL ASSAULT — all forces!';
+}
+
 export class Renderer {
   /** @param {HTMLCanvasElement} canvas  @param {CanvasRenderingContext2D} ctx */
   constructor(canvas, ctx) {
     this.canvas      = canvas;
     this.ctx         = ctx;
     this._titlePhase = 0;
+    // Base damage flash: stores performance.now() when HP last dropped
+    this._basePrevHp   = { player: -1, enemy: -1 };
+    this._baseDmgFlash = { player: 0,  enemy: 0  };
   }
 
   // ─────────────────────────────────────────
@@ -223,6 +236,15 @@ export class Renderer {
     ctx.textBaseline = 'top';
     ctx.fillText('♪ SUMMON', BAR_X + 6, BAR_Y + 4);
 
+    // Unit type label — top-center of bar
+    const _uType    = tab.unitType || 'archer';
+    const _typeLabel = _uType === 'mage' ? '🔮 Mage' : _uType === 'knight' ? '⚔ Knight' : '🏹 Archer';
+    ctx.font         = 'bold 9px Georgia, serif';
+    ctx.fillStyle    = '#88aaff';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(_typeLabel, BAR_X + BAR_W / 2, BAR_Y + 4);
+
     // ── 5-line staff spanning the full bar ─────────────────────────────────
     const STAFF_TOP  = BAR_Y + 14;
     const STAFF_H    = 24;    // 5 lines with 4 gaps of 6px each
@@ -380,15 +402,31 @@ export class Renderer {
     const baseW = BASE_WIDTH * W;
     const baseH = laneH * 1.5;
     const laneY = LANE_Y * H;
-    this._drawBase(state.playerBase, PLAYER_BASE_X * W, laneY - baseH / 2, baseW, baseH, '#7a4810', '#e8a030');
-    this._drawBase(state.enemyBase,  ENEMY_BASE_X  * W, laneY - baseH / 2, baseW, baseH, '#6a1010', '#ff4444');
+    const now   = performance.now();
+
+    // Track HP changes to trigger damage flash
+    for (const team of ['player', 'enemy']) {
+      const base = team === 'player' ? state.playerBase : state.enemyBase;
+      if (this._basePrevHp[team] > 0 && base.hp < this._basePrevHp[team]) {
+        this._baseDmgFlash[team] = now;
+      }
+      this._basePrevHp[team] = base.hp;
+    }
+
+    this._drawBase(state.playerBase, PLAYER_BASE_X * W, laneY - baseH / 2, baseW, baseH, '#7a4810', '#e8a030', false, this._baseDmgFlash.player);
+    this._drawBase(state.enemyBase,  ENEMY_BASE_X  * W, laneY - baseH / 2, baseW, baseH, '#6a1010', '#ff4444', true,  this._baseDmgFlash.enemy);
   }
 
-  _drawBase(base, x, y, w, h, dark, light) {
+  /**
+   * @param {boolean} isEnemy  — enemy base fills right-to-left, player left-to-right
+   * @param {number}  flashTime — performance.now() when damage was last taken (0 = none)
+   */
+  _drawBase(base, x, y, w, h, dark, light, isEnemy, flashTime) {
     const ctx    = this.ctx;
     const hpFrac = base.hp / base.maxHp;
     ctx.save();
 
+    // Castle body + battlements
     ctx.fillStyle = dark; ctx.strokeStyle = light; ctx.lineWidth = 2;
     ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
 
@@ -399,11 +437,32 @@ export class Renderer {
       ctx.fillRect(mx, y - mH, mW, mH); ctx.strokeRect(mx, y - mH, mW, mH);
     }
 
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(x, y + h + 5, w, 6);
-    ctx.fillStyle = hpFrac > 0.5 ? '#44ff88' : hpFrac > 0.25 ? '#ffcc00' : CLR.DANGER;
-    ctx.fillRect(x, y + h + 5, w * hpFrac, 6);
+    // HP bar (8px, below castle)
+    const barY    = y + h + 5;
+    const barH    = 8;
+    const barW    = w * hpFrac;
+    const barColor = hpFrac > 0.6 ? '#44ff88' : hpFrac > 0.3 ? '#ffcc00' : CLR.DANGER;
 
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x, barY, w, barH);
+
+    ctx.fillStyle = barColor;
+    if (isEnemy) {
+      // Enemy bar fills from right edge inward
+      ctx.fillRect(x + w - barW, barY, barW, barH);
+    } else {
+      ctx.fillRect(x, barY, barW, barH);
+    }
+
+    // Damage flash — brief red overlay on the full bar
+    const now = performance.now();
+    if (flashTime > 0 && now - flashTime < 400) {
+      const alpha = (1 - (now - flashTime) / 400) * 0.7;
+      ctx.fillStyle = `rgba(255, 50, 50, ${alpha.toFixed(3)})`;
+      ctx.fillRect(x, barY, w, barH);
+    }
+
+    // Percentage text inside castle
     ctx.font         = `bold ${Math.max(9, Math.min(13, w * 0.18))}px Georgia, serif`;
     ctx.fillStyle    = light;
     ctx.textAlign    = 'center';
@@ -418,50 +477,28 @@ export class Renderer {
   // ─────────────────────────────────────────
 
   /**
-   * Draw all units with HP bars and tier numbers.
-   * Stunned enemy units get a purple outer ring at 1.5× radius.
+   * Draw all units with HP bars and tier labels.
+   * Enemy tiers have distinct visuals (T1 plain, T2 ring+pulse, T3 spikes+glow).
+   * Player units show type-specific shapes (archer=circle, knight=diamond, mage=glow).
+   * Stunned enemies get a purple ring at 1.5× radius.
    */
   _drawUnits(state) {
     const ctx = this.ctx;
+    const t   = state.time || 0;
     for (const unit of state.units) {
       if (!unit.alive) continue;
-
-      const colour = TEAM_COLOUR[unit.team] ?? CLR.ACCENT2;
-      const stroke = TEAM_STROKE[unit.team] ?? '#ffffff';
-      const r      = unit.radius ?? 12;
-
+      const r = unit.radius ?? 12;
       ctx.save();
 
-      // Stun ring — purple, drawn behind the body
-      if (unit.stunned) {
-        ctx.beginPath();
-        ctx.arc(unit.x, unit.y, r * 1.5, 0, Math.PI * 2);
-        ctx.strokeStyle = '#cc44ff';
-        ctx.lineWidth   = 3;
-        ctx.globalAlpha = 0.7;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
+      if (unit.team === 'enemy') {
+        this._drawEnemyBody(ctx, unit, r, t);
+      } else {
+        this._drawPlayerBody(ctx, unit, r, t);
       }
 
-      // Body circle
-      ctx.beginPath();
-      ctx.arc(unit.x, unit.y, r, 0, Math.PI * 2);
-      ctx.fillStyle   = colour;
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth   = 2;
-      ctx.fill();
-      ctx.stroke();
-
-      // Tier number
-      ctx.font         = `bold ${Math.max(8, r * 0.8)}px Georgia, serif`;
-      ctx.fillStyle    = 'rgba(255,255,255,0.85)';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(unit.tier), unit.x, unit.y);
-
-      // HP bar above unit
-      const bw = r * 2.6, bh = 3;
-      const bx = unit.x - bw / 2, by = unit.y - r - 6;
+      // HP bar above unit (shared for both teams)
+      const bw  = r * 2.6, bh = 3;
+      const bx  = unit.x - bw / 2, by = unit.y - r - 7;
       const pct = Math.max(0, unit.hp / unit.maxHp);
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.fillRect(bx, by, bw, bh);
@@ -470,6 +507,157 @@ export class Renderer {
 
       ctx.restore();
     }
+  }
+
+  /** Draw tier-specific enemy body. Called inside ctx.save()/restore(). */
+  _drawEnemyBody(ctx, unit, r, t) {
+    const tier = unit.tier || 1;
+
+    // Stun ring — purple, behind body
+    if (unit.stunned) {
+      ctx.beginPath();
+      ctx.arc(unit.x, unit.y, r * 1.5, 0, Math.PI * 2);
+      ctx.strokeStyle = '#cc44ff';
+      ctx.lineWidth   = 3;
+      ctx.globalAlpha = 0.7;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    if (tier === 1) {
+      // Tier 1 — plain red circle
+      ctx.beginPath();
+      ctx.arc(unit.x, unit.y, r, 0, Math.PI * 2);
+      ctx.fillStyle   = '#cc2222';
+      ctx.strokeStyle = '#ff7755';
+      ctx.lineWidth   = 1.5;
+      ctx.fill();
+      ctx.stroke();
+
+    } else if (tier === 2) {
+      // Tier 2 — darker red + orange ring, slow pulse (1 s period)
+      const scale = 1 + 0.04 * Math.sin(t * Math.PI * 2);
+      const vr    = r * scale;
+
+      // Orange outer ring
+      ctx.beginPath();
+      ctx.arc(unit.x, unit.y, vr + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ff8800';
+      ctx.lineWidth   = 2.5;
+      ctx.stroke();
+
+      // Dark-red body
+      ctx.beginPath();
+      ctx.arc(unit.x, unit.y, vr, 0, Math.PI * 2);
+      ctx.fillStyle   = '#8b0000';
+      ctx.strokeStyle = '#cc3300';
+      ctx.lineWidth   = 2;
+      ctx.fill();
+      ctx.stroke();
+
+    } else {
+      // Tier 3 — deep crimson, purple glow ring, 4 spikes, faster pulse (0.5 s)
+      const scale = 1 + 0.06 * Math.sin(t * Math.PI * 4);
+      const vr    = r * scale;
+
+      // Purple glow ring
+      ctx.shadowBlur  = 14;
+      ctx.shadowColor = '#cc44ff';
+      ctx.beginPath();
+      ctx.arc(unit.x, unit.y, vr + 7, 0, Math.PI * 2);
+      ctx.strokeStyle = '#cc44ff';
+      ctx.lineWidth   = 3;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 4 triangular spikes at cardinal angles
+      for (let s = 0; s < 4; s++) {
+        const ang = s * Math.PI / 2;
+        const tip = { x: unit.x + Math.cos(ang) * (vr + 11), y: unit.y + Math.sin(ang) * (vr + 11) };
+        const bw  = 5;
+        const b1  = { x: unit.x + Math.cos(ang) * vr + Math.cos(ang + Math.PI / 2) * bw,
+                      y: unit.y + Math.sin(ang) * vr + Math.sin(ang + Math.PI / 2) * bw };
+        const b2  = { x: unit.x + Math.cos(ang) * vr - Math.cos(ang + Math.PI / 2) * bw,
+                      y: unit.y + Math.sin(ang) * vr - Math.sin(ang + Math.PI / 2) * bw };
+        ctx.beginPath();
+        ctx.moveTo(tip.x, tip.y);
+        ctx.lineTo(b1.x, b1.y);
+        ctx.lineTo(b2.x, b2.y);
+        ctx.closePath();
+        ctx.fillStyle = '#aa22cc';
+        ctx.fill();
+      }
+
+      // Deep crimson body on top
+      ctx.beginPath();
+      ctx.arc(unit.x, unit.y, vr, 0, Math.PI * 2);
+      ctx.fillStyle   = '#6b0000';
+      ctx.strokeStyle = '#ff2222';
+      ctx.lineWidth   = 2;
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Tier number
+    ctx.font         = `bold ${Math.max(8, r * 0.75)}px Georgia, serif`;
+    ctx.fillStyle    = 'rgba(255,255,255,0.9)';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(tier), unit.x, unit.y);
+  }
+
+  /** Draw unit-type-specific player body. Called inside ctx.save()/restore(). */
+  _drawPlayerBody(ctx, unit, r) {
+    const type = unit.unitType || 'archer';
+
+    if (type === 'knight') {
+      // Diamond (rotated square)
+      const hw = r * 1.05;
+      ctx.save();
+      ctx.translate(unit.x, unit.y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle   = '#2255cc';
+      ctx.strokeStyle = '#aac8ff';
+      ctx.lineWidth   = 2;
+      ctx.fillRect(-hw, -hw, hw * 2, hw * 2);
+      ctx.strokeRect(-hw, -hw, hw * 2, hw * 2);
+      ctx.restore();
+    } else if (type === 'mage') {
+      // Blue circle with purple glow ring
+      ctx.shadowBlur  = 10;
+      ctx.shadowColor = '#8855ff';
+      ctx.beginPath();
+      ctx.arc(unit.x, unit.y, r + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = '#8855ff';
+      ctx.lineWidth   = 2.5;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.beginPath();
+      ctx.arc(unit.x, unit.y, r, 0, Math.PI * 2);
+      ctx.fillStyle   = '#2233aa';
+      ctx.strokeStyle = '#aac8ff';
+      ctx.lineWidth   = 2;
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      // Archer — plain blue circle (default)
+      ctx.beginPath();
+      ctx.arc(unit.x, unit.y, r, 0, Math.PI * 2);
+      ctx.fillStyle   = '#5b8fff';
+      ctx.strokeStyle = '#aac8ff';
+      ctx.lineWidth   = 2;
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Type letter label
+    const label = type === 'mage' ? 'M' : type === 'knight' ? 'K' : 'A';
+    ctx.font         = `bold ${Math.max(8, r * 0.75)}px Georgia, serif`;
+    ctx.fillStyle    = 'rgba(255,255,255,0.9)';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, unit.x, unit.y);
   }
 
   // ─────────────────────────────────────────
@@ -619,15 +807,37 @@ export class Renderer {
   _drawWaveAnnouncement(state, W, H) {
     if (!state.waveAnnounce || state.wave <= 0) return;
     const elapsed = performance.now() - state.waveAnnounce;
-    if (elapsed >= 2000) return;
+    // Total: 0.3s fade-in + 1.2s hold + 0.5s fade-out = 2.0s
+    const FADE_IN  = 300;
+    const HOLD_END = 1500;
+    const TOTAL    = 2000;
+    if (elapsed >= TOTAL) return;
+
+    let alpha;
+    if (elapsed < FADE_IN) {
+      alpha = elapsed / FADE_IN;
+    } else if (elapsed < HOLD_END) {
+      alpha = 1;
+    } else {
+      alpha = 1 - (elapsed - HOLD_END) / (TOTAL - HOLD_END);
+    }
+
     const ctx = this.ctx;
     ctx.save();
-    ctx.globalAlpha  = 1 - elapsed / 2000;
-    ctx.font         = 'bold 80px Georgia, serif';
-    ctx.fillStyle    = '#ffffff';
+    ctx.globalAlpha  = Math.max(0, alpha);
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`WAVE ${state.wave}`, W / 2, H / 2);
+
+    // "WAVE N" — gold, 64px
+    ctx.font      = 'bold 64px Georgia, serif';
+    ctx.fillStyle = CLR.ACCENT;
+    ctx.fillText(`WAVE ${state.wave}`, W / 2, H / 2 - 22);
+
+    // Subtext description — white, 22px
+    ctx.font      = 'bold 22px Georgia, serif';
+    ctx.fillStyle = CLR.TEXT;
+    ctx.fillText(waveDescription(state.wave), W / 2, H / 2 + 26);
+
     ctx.restore();
   }
 

@@ -64,9 +64,10 @@ const KEY_BLACK   = '#2e2e2e';    // dark grey black keys
 const KEY_PRESS   = AMBER;
 
 // ─── Dimensions ───────────────────────────────────────────────────────────
-const PIANO_H  = 70;    // piano strip height
-const ROW1_H   = 28;    // hint + mode row
-const PANEL_H  = ROW1_H + PIANO_H;
+const PIANO_H    = 70;   // piano strip height
+const ROW1_H     = 28;   // hint + mode badge row
+const MODE_BTN_H = 48;   // SUMMON / ATTACK toggle buttons (mobile-friendly)
+const PANEL_H    = ROW1_H + MODE_BTN_H + PIANO_H;
 
 // ─── Helpers: piano geometry (computed from W / H each frame) ─────────────
 function pianoGeom(W, H) {
@@ -99,6 +100,14 @@ export function renderHUD(ctx, state, W, H) {
   ctx.fillStyle = '#f0ead6';
   ctx.textAlign = 'left';
   ctx.fillText(`Wave ${state.wave || 1}/10`, PAD, topY);
+
+  // ── Combo counter — below wave (shown when combo ≥ 3) ───────────────────
+  if ((state.combo || 0) >= 3) {
+    ctx.font      = 'bold 13px Georgia, serif';
+    ctx.fillStyle = '#ff8822';
+    ctx.textAlign = 'left';
+    ctx.fillText(`x${state.combo} COMBO`, PAD, topY + 20);
+  }
 
   // ── Resources — top-centre ───────────────────────────────────────────────
   const res = state.resources != null ? Math.floor(state.resources) : 0;
@@ -136,6 +145,41 @@ export function renderHUD(ctx, state, W, H) {
     ctx.textAlign = 'right';
     ctx.fillText(isSummon ? '♪ SUMMON' : '⚔ ATTACK', W - PAD, hintY);
   }
+
+  // ── SUMMON / ATTACK mode toggle buttons (above piano, mobile-friendly) ──
+  const modeBtnY = H - PIANO_H - MODE_BTN_H;
+  const isSummon = state.inputMode === 'summon';
+
+  // SUMMON button — left half
+  ctx.fillStyle = isSummon ? 'rgba(68,255,136,0.18)' : 'rgba(20,20,30,0.92)';
+  ctx.fillRect(0, modeBtnY, W / 2, MODE_BTN_H);
+  ctx.strokeStyle = isSummon ? '#44ff88' : '#2a2a3a';
+  ctx.lineWidth   = isSummon ? 2 : 1;
+  ctx.strokeRect(0, modeBtnY, W / 2, MODE_BTN_H);
+  ctx.font         = 'bold 16px Georgia, serif';
+  ctx.fillStyle    = isSummon ? '#44ff88' : '#505060';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('♪  SUMMON', W / 4, modeBtnY + MODE_BTN_H / 2);
+
+  // ATTACK button — right half
+  ctx.fillStyle = !isSummon ? 'rgba(255,80,80,0.18)' : 'rgba(20,20,30,0.92)';
+  ctx.fillRect(W / 2, modeBtnY, W / 2, MODE_BTN_H);
+  ctx.strokeStyle = !isSummon ? '#ff6666' : '#2a2a3a';
+  ctx.lineWidth   = !isSummon ? 2 : 1;
+  ctx.strokeRect(W / 2, modeBtnY, W / 2, MODE_BTN_H);
+  ctx.fillStyle    = !isSummon ? '#ff6666' : '#505060';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('⚔  ATTACK', W * 3 / 4, modeBtnY + MODE_BTN_H / 2);
+
+  // Divider between buttons
+  ctx.strokeStyle = '#2a2a3a';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(W / 2, modeBtnY);
+  ctx.lineTo(W / 2, modeBtnY + MODE_BTN_H);
+  ctx.stroke();
 
   // ── Piano keyboard ───────────────────────────────────────────────────────
   const { PIANO_X, wkW, bkW, bkH, pianoY } = pianoGeom(W, H);
@@ -204,10 +248,46 @@ export function renderHUD(ctx, state, W, H) {
     }
   }
 
+  // ── Combo bonus flash — center screen ───────────────────────────────────
+  if (state.comboBonusTime) {
+    const elapsed = performance.now() - state.comboBonusTime;
+    if (elapsed < 1500) {
+      const alpha = Math.max(0, 1 - elapsed / 1500);
+      ctx.save();
+      ctx.globalAlpha  = alpha;
+      ctx.font         = 'bold 28px Georgia, serif';
+      ctx.fillStyle    = '#ff8822';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`+COMBO BONUS  +25`, W / 2, H * 0.55);
+      ctx.restore();
+    }
+  }
+
   ctx.restore();
 }
 
 // ─── Touch / click support ─────────────────────────────────────────────────
+
+/**
+ * Return which mode button was tapped, or null if the point is outside.
+ * Mode buttons span the full screen width above the piano:
+ *   Left half  → 'summon'
+ *   Right half → 'attack'
+ *
+ * @param {number} px  — x in logical (CSS) pixels
+ * @param {number} py  — y in logical (CSS) pixels
+ * @param {number} W   — logical canvas width
+ * @param {number} H   — logical canvas height
+ * @returns {'summon'|'attack'|null}
+ */
+export function getModeButtonAtPoint(px, py, W, H) {
+  const modeBtnTop = H - PIANO_H - MODE_BTN_H;
+  const modeBtnBot = H - PIANO_H;
+  if (py < modeBtnTop || py >= modeBtnBot) return null;
+  if (px < 0 || px > W) return null;
+  return px < W / 2 ? 'summon' : 'attack';
+}
 
 /**
  * Map a canvas-relative point to a note name, or null if outside the piano.
@@ -239,35 +319,36 @@ export function getKeyAtPoint(px, py, W, H) {
 
 /**
  * Register click and touchstart listeners on `canvas`.
- * When a piano key is hit, calls `onNote(noteString)`.
+ * Dispatches to onNote(note) for piano key hits, or onModeToggle(mode)
+ * for SUMMON/ATTACK mode button taps.
  * Must be called only once per canvas element.
  *
  * @param {HTMLCanvasElement} canvas
  * @param {function(string):void} onNote
+ * @param {function('summon'|'attack'):void} [onModeToggle]
  */
-export function initPianoTouchInput(canvas, onNote) {
-  function coordsFromMouse(e) {
-    const r = canvas.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+export function initPianoTouchInput(canvas, onNote, onModeToggle) {
+  function handlePoint(px, py) {
+    const W = canvas.offsetWidth, H = canvas.offsetHeight;
+    // Piano key takes priority
+    const note = getKeyAtPoint(px, py, W, H);
+    if (note) { onNote(note); return; }
+    // Mode button
+    if (onModeToggle) {
+      const mode = getModeButtonAtPoint(px, py, W, H);
+      if (mode) onModeToggle(mode);
+    }
   }
   function onClick(e) {
-    const { x, y } = coordsFromMouse(e);
-    console.log('[mouse/touch] detected at x:' + x.toFixed(1) + ' y:' + y.toFixed(1));
-    const note = getKeyAtPoint(x, y, canvas.offsetWidth, canvas.offsetHeight);
-    console.log('[mouse/touch] detected note: ' + (note || 'NO HIT'));
-    if (note) onNote(note);
+    const r = canvas.getBoundingClientRect();
+    handlePoint(e.clientX - r.left, e.clientY - r.top);
   }
   function onTouchStart(e) {
     e.preventDefault();   // block ghost clicks & page scroll on mobile / iOS
     const t = e.touches[0];
     if (!t) return;
-    const r  = canvas.getBoundingClientRect();
-    const px = t.clientX - r.left;
-    const py = t.clientY - r.top;
-    console.log('[mouse/touch] detected at x:' + px.toFixed(1) + ' y:' + py.toFixed(1));
-    const note = getKeyAtPoint(px, py, canvas.offsetWidth, canvas.offsetHeight);
-    console.log('[mouse/touch] detected note: ' + (note || 'NO HIT'));
-    if (note) onNote(note);
+    const r = canvas.getBoundingClientRect();
+    handlePoint(t.clientX - r.left, t.clientY - r.top);
   }
   canvas.style.pointerEvents = 'auto';
   canvas.addEventListener('click', onClick);

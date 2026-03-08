@@ -34,6 +34,21 @@ const WHITE_NOTES = ['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3'];
 /** Matching display key labels (uppercase, mirrors KEY_TO_NOTE in keyboard.js). */
 const WHITE_KEYS  = ['H',  'J',  'K',  'L',  ';',  "'",  '↵'];
 
+/** Combo milestone values that grant a resource bonus. */
+const COMBO_MILESTONES = new Set([5, 10, 20]);
+
+/**
+ * Determine which unit type to summon based on the first note's pitch.
+ * Low notes (C3/D3) → Mage; Mid (E3/F3/G3) → Knight; High (A3/B3) → Archer.
+ * @param {string} note
+ * @returns {'archer'|'knight'|'mage'}
+ */
+function noteToUnitType(note) {
+  if (note === 'C3' || note === 'D3') return 'mage';
+  if (note === 'E3' || note === 'F3' || note === 'G3') return 'knight';
+  return 'archer';
+}
+
 /** How long a correct (green) flash stays before the next note becomes active. */
 const HIT_FLASH_MS      = 250;
 /** How long a wrong (red) flash stays before reverting to pending. */
@@ -66,6 +81,7 @@ export class TablatureSystem {
     tab.blocked           = false;
     tab.blockedTime       = 0;
     tab.sequenceDoneTime  = 0;  // performance.now() when all 3 were hit; 0 = not done
+    tab.unitType          = 'archer';  // set by _fillQueue from first note of sequence
     this._fillQueue(tab);
   }
 
@@ -136,6 +152,15 @@ export class TablatureSystem {
       slot.statusTime = now;
       tab.activeIndex++;
 
+      // Update global combo
+      state.combo = (state.combo || 0) + 1;
+      state.comboLastInputTime = now;
+      if (COMBO_MILESTONES.has(state.combo)) {
+        state.resources    = Math.min(999, (state.resources || 0) + 25);
+        state.comboBonusTime = now;
+        console.log(`[combo] milestone ${state.combo} → +25 resources`);
+      }
+
       if (tab.activeIndex >= tab.queue.length) {
         // All 3 notes completed — try to trigger a summon
         tab.combo++;
@@ -161,6 +186,9 @@ export class TablatureSystem {
       // Wrong note — flash the active pill red; DO NOT reset sequence
       slot.status     = 'miss';
       slot.statusTime = now;
+      // Miss resets the global combo
+      state.combo = 0;
+      state.comboLastInputTime = now;
     }
   }
 
@@ -196,7 +224,9 @@ export class TablatureSystem {
         statusTime: 0,
       });
     }
+    // Unit type is determined by the first note of each new sequence
+    tab.unitType        = noteToUnitType(tab.queue[0].note);
     tab.nextRefreshTime = performance.now() + PROMPT_REFRESH_MS;
-    console.log('[summon prompt] new: ' + tab.queue.map(s => s.note).join(' '));
+    console.log('[summon prompt] new: ' + tab.queue.map(s => s.note).join(' ') + ' → ' + tab.unitType);
   }
 }

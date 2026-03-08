@@ -96,6 +96,8 @@ export class Unit {
     this.attackSeqProgress = 0;
     this.stunned           = false;
     this.stunTimer         = 0;
+    /** Visual unit type for player units: 'archer' | 'knight' | 'mage' | null */
+    this.unitType          = null;
   }
 
   /**
