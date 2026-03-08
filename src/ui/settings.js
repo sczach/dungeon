@@ -353,6 +353,13 @@ export class SettingsUI {
     console.log('[settings] panel rendered on TITLE scene');
   }
 
+  // ── Public helpers ─────────────────────────────────────────────────────────
+
+  /** Close the settings panel. Called by game.js on any scene transition away from TITLE. */
+  closePanel() {
+    this._togglePanel(false);
+  }
+
   // ── Private helpers ────────────────────────────────────────────────────────
 
   /** Show or hide the settings panel. Pass explicit boolean to force state. */
