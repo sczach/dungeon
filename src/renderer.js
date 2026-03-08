@@ -172,6 +172,7 @@ export class Renderer {
 
   _drawPlaying(state, W, H) {
     this._drawTablature(state, W, H);       // top of screen — drawn first (behind nothing)
+    this._drawChordCue(state, W, H);        // chord name + tab below tablature bar
     this._drawMap(W, H);
     this._drawBases(state, W, H);
     this._drawUnits(state);
@@ -626,5 +627,70 @@ export class Renderer {
     this.ctx.globalAlpha = alpha;
     this.ctx.fillRect(0, 0, W, H);
     this.ctx.restore();
+  }
+
+  // ─────────────────────────────────────────
+  // Chord cue — top-center chord name + tab
+  // ─────────────────────────────────────────
+
+  /**
+   * Draws the active guitar-chord cue (name + tab notation) at the top-center
+   * of the canvas, below the tablature bar.
+   * Only visible when state.showChordCues is true and state.currentPrompt is set.
+   */
+  _drawChordCue(state, W, H) {    // eslint-disable-line no-unused-vars
+    if (!state.currentPrompt || !state.showChordCues) return;
+
+    const { chord, tab, difficulty } = state.currentPrompt;
+    const ctx = this.ctx;
+
+    // ── Layout ──────────────────────────────────────────────────────────────
+    const PANEL_W = 220;
+    const PANEL_H = 68;
+    const PANEL_X = (W - PANEL_W) / 2;
+    const PANEL_Y = 110;   // just below the 96-px tablature bar
+
+    // ── Difficulty colour ────────────────────────────────────────────────────
+    const diffColour = difficulty === 'hard'   ? '#ff6644'
+                     : difficulty === 'medium' ? '#ffcc00'
+                     : '#44ff88';  // easy / default
+
+    // ── Glow when detected chord matches ────────────────────────────────────
+    const isMatch = !!(state.audio && state.audio.detectedChord === chord);
+    if (isMatch) console.log('[chord-cue] detected match — applying green glow');
+
+    ctx.save();
+
+    // Panel background
+    ctx.shadowBlur  = isMatch ? 20 : 0;
+    ctx.shadowColor = '#44ff88';
+    ctx.fillStyle   = 'rgba(10,10,18,0.82)';
+    ctx.strokeStyle = isMatch ? '#44ff88' : '#3a3050';
+    ctx.lineWidth   = isMatch ? 1.5 : 1;
+    if (ctx.roundRect) {
+      ctx.beginPath();
+      ctx.roundRect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 6);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillRect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H);
+      ctx.strokeRect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H);
+    }
+    ctx.shadowBlur = 0;
+
+    // Chord name (large)
+    ctx.font         = 'bold 48px Georgia, serif';
+    ctx.fillStyle    = diffColour;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(chord, W / 2, PANEL_Y + 5);
+
+    // Tab notation (small mono below chord name)
+    ctx.font         = '13px monospace';
+    ctx.fillStyle    = '#a09880';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(tab, W / 2, PANEL_Y + PANEL_H - 5);
+
+    ctx.restore();
   }
 }

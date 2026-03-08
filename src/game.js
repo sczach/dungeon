@@ -28,9 +28,10 @@ import { Unit }                  from './entities/unit.js';
 import { Base }                  from './systems/base.js';
 import { keyboardInput, playSuccessKill } from './input/keyboard.js';
 import { initPianoTouchInput }            from './ui/hud.js';
-import { loadSettings, wireSettingsUI }   from './ui/screens.js';
+import { SettingsUI }                     from './ui/settings.js';
 import { TablatureSystem }       from './systems/tablature.js';
 import { AttackSequenceSystem }  from './systems/attackSequence.js';
+import { PromptManager }         from './systems/prompts.js';
 
 // Re-export SCENE for callers that import from game.js
 export { SCENE };
@@ -89,8 +90,12 @@ function createInitialState() {
     // ── Mode & settings ───────────────────────
     inputMode:      'summon',    // 'summon' | 'attack' — toggled by Space
     modeAnnounce:   0,           // performance.now() timestamp; 0 = none
-    showNoteLabels: false,       // overridden by loadSettings()
-    difficulty:     'medium',    // overridden by loadSettings()
+    showNoteLabels:  false,       // overridden by loadSettings()
+    difficulty:      'medium',   // overridden by loadSettings()
+    audioThreshold:  50,         // 0–100 mic sensitivity; overridden by loadSettings()
+    masterVolume:    80,         // 0–100 output gain; overridden by loadSettings()
+    showChordCues:   true,       // show chord name + tab at top; overridden by loadSettings()
+    currentPrompt:   null,       // { chord, tab, difficulty } — set by PromptManager
 
     // ── Resources — earned via kills, spent on summons ──
     resources:          0,       // start 0; no auto-tick; kills add 20/30/50
@@ -115,7 +120,9 @@ const ctx      = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'
 const renderer = new Renderer(canvas, ctx);
 const state    = createInitialState();
 
-loadSettings(state);   // override defaults from localStorage
+const settingsUI           = new SettingsUI();
+const promptManager        = new PromptManager();
+settingsUI.loadSettings(state);   // override defaults from localStorage
 const tablatureSystem      = new TablatureSystem();
 const attackSequenceSystem = new AttackSequenceSystem();
 
@@ -219,6 +226,9 @@ function startGame() {
   Object.assign(fresh, {
     difficulty:     state.difficulty,
     showNoteLabels: state.showNoteLabels,
+    audioThreshold: state.audioThreshold,
+    masterVolume:   state.masterVolume,
+    showChordCues:  state.showChordCues,
     inputMode:      'summon',   // always reset to summon on new game
   });
 
@@ -238,6 +248,7 @@ function startGame() {
   // Initialise subsystems
   tablatureSystem.reset(state);
   attackSequenceSystem.reset(state);
+  promptManager.reset();
 
   // Announce Wave 1
   state.waveAnnounce = performance.now();
@@ -387,6 +398,7 @@ function update(dt) {
       // ── Subsystem updates (tablature only active in summon mode) ─────────
       if (state.inputMode === 'summon') tablatureSystem.update(dt, state);
       attackSequenceSystem.update(dt, state);
+      promptManager.update(dt, state);
       // No resource auto-tick — resources earned from kills only
 
       // ── Wave progression (every 30 s of play time) ───────────────────────
@@ -481,7 +493,7 @@ document.addEventListener('visibilitychange', () => {
 
 setScene(SCENE.TITLE);
 wireButtons();
-wireSettingsUI(state, startGame);
+settingsUI.render(state, startGame);
 initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note));
 
 requestAnimationFrame((ts) => {
