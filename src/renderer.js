@@ -40,6 +40,16 @@ const NOTE_TO_KEY = Object.freeze({
   'C#3': 'U', 'D#3': 'I', 'F#3': 'O', 'G#3': 'P', 'A#3': '[',
 });
 
+/**
+ * Maps note name → staff step position (0 = bottom / C3, 6 = B3).
+ * Sharps share the natural's integer position (same line/space, no accidentals drawn).
+ */
+const NOTE_TO_STAFF_POS = Object.freeze({
+  'C3': 0, 'D3': 1, 'E3': 2, 'F3': 3, 'G3': 4, 'A3': 5, 'B3': 6,
+  'C#3': 0, 'D#3': 1, 'F#3': 3, 'G#3': 4, 'A#3': 5,
+  'C4': 7,  // fallback if attackSequence.js still uses C4
+});
+
 export class Renderer {
   /** @param {HTMLCanvasElement} canvas  @param {CanvasRenderingContext2D} ctx */
   constructor(canvas, ctx) {
@@ -167,6 +177,7 @@ export class Renderer {
     this._drawUnits(state);
     this._drawEnemySequences(state, W, H);
     this._drawWaveAnnouncement(state, W, H);
+    this._drawModeAnnouncement(state, W, H);
     renderHUD(this.ctx, state, W, H);
   }
 
@@ -413,42 +424,72 @@ export class Renderer {
    */
   _drawEnemySequences(state, W, H) {   // eslint-disable-line no-unused-vars
     const ctx = this.ctx;
-    const t   = state.time || 0;   // seconds of game time (for pulsing)
+    const t   = state.time || 0;
 
     for (const unit of state.units) {
       if (!unit.alive || unit.team !== 'enemy') continue;
       if (!unit.attackSeq || unit.attackSeq.length === 0) continue;
 
-      const seqLen  = unit.attackSeq.length;
-      const PILL_W  = 30;
-      const PILL_H  = 16;
-      const GAP     = 3;
-      const totalW  = seqLen * (PILL_W + GAP) - GAP;
-      const baseX   = unit.x - totalW / 2;
-      const baseY   = unit.y - (unit.radius ?? 12) - 14 - PILL_H;
+      const seqLen = unit.attackSeq.length;
+      const r      = unit.radius ?? 12;
+      const PILL_W = 30, PILL_H = 16, GAP = 3;
+      const totalW = seqLen * (PILL_W + GAP) - GAP;
+      const baseX  = unit.x - totalW / 2;
+      const baseY  = unit.y - r - 14 - PILL_H;
 
       ctx.save();
 
+      // ── 5-line staff above the pill row ──────────────────────────────────
+      const STAFF_W = Math.max(totalW, 56);
+      const STAFF_H = 20;
+      const STEP    = STAFF_H / 8;   // vertical distance per note step
+      const staffX  = unit.x - STAFF_W / 2;
+      const staffY  = baseY - STAFF_H - 5;
+
+      ctx.strokeStyle = 'rgba(200,185,155,0.45)';
+      ctx.lineWidth   = 0.5;
+      for (let l = 0; l < 5; l++) {
+        const ly = staffY + STAFF_H - l * STEP * 2;
+        ctx.beginPath();
+        ctx.moveTo(staffX, ly);
+        ctx.lineTo(staffX + STAFF_W, ly);
+        ctx.stroke();
+      }
+
+      // Note heads on staff
+      const headStep = STAFF_W / (seqLen + 1);
+      for (let i = 0; i < seqLen; i++) {
+        const note    = unit.attackSeq[i];
+        const pos     = NOTE_TO_STAFF_POS[note] ?? 3;   // default middle
+        const ny      = staffY + STAFF_H - pos * STEP;
+        const nx      = staffX + headStep * (i + 0.6);
+        const isDone  = i < unit.attackSeqProgress;
+        ctx.beginPath();
+        ctx.ellipse(nx, ny, 4.5, 3, -0.18, 0, Math.PI * 2);
+        ctx.fillStyle   = isDone ? '#44ff88' : i === unit.attackSeqProgress ? CLR.ACCENT : 'rgba(240,234,214,0.55)';
+        ctx.strokeStyle = 'rgba(30,20,10,0.7)';
+        ctx.lineWidth   = 0.5;
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // ── Existing pill row ─────────────────────────────────────────────────
       for (let i = 0; i < seqLen; i++) {
         const note      = unit.attackSeq[i];
         const isDone    = i < unit.attackSeqProgress;
         const isCurrent = i === unit.attackSeqProgress;
 
-        // Pulse scale for current note
         const scale = isCurrent ? 1 + 0.1 * Math.sin(t * 6) : 1;
-        const pw    = PILL_W * scale;
-        const ph    = PILL_H * scale;
-        const px    = baseX + i * (PILL_W + GAP) + (PILL_W - pw) / 2;
-        const py    = baseY + (PILL_H - ph) / 2;
+        const pw = PILL_W * scale, ph = PILL_H * scale;
+        const px = baseX + i * (PILL_W + GAP) + (PILL_W - pw) / 2;
+        const py = baseY + (PILL_H - ph) / 2;
 
-        // Pill background
         ctx.fillStyle = isDone ? '#0d3a18' : isCurrent ? '#3a2800' : '#1e1e2e';
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 3);
         else ctx.rect(px, py, pw, ph);
         ctx.fill();
 
-        // Pill border
         ctx.strokeStyle = isDone ? '#44ff88' : isCurrent ? CLR.ACCENT : '#4a4a5a';
         ctx.lineWidth   = isDone ? 1.5 : isCurrent ? 2 : 1;
         ctx.beginPath();
@@ -456,14 +497,12 @@ export class Renderer {
         else ctx.rect(px, py, pw, ph);
         ctx.stroke();
 
-        // Note name
         ctx.font         = `bold ${isCurrent ? 10 : 9}px Georgia, serif`;
         ctx.fillStyle    = isDone ? '#44ff88' : isCurrent ? CLR.ACCENT : '#8a8a9a';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(note, px + pw / 2, py + ph / 2);
 
-        // QWERTY key below pill
         const qKey = NOTE_TO_KEY[note];
         if (qKey) {
           ctx.font      = '8px Georgia, serif';
@@ -479,6 +518,28 @@ export class Renderer {
   // ─────────────────────────────────────────
   // Wave announcement
   // ─────────────────────────────────────────
+
+  /**
+   * Briefly display "Attack Mode" or "Summon Mode" after Space-bar toggle.
+   * Fades out over 1.5 s. Drawn above the piano strip.
+   */
+  _drawModeAnnouncement(state, W, H) {
+    if (!state.modeAnnounce) return;
+    const elapsed = performance.now() - state.modeAnnounce;
+    if (elapsed >= 1500) return;
+    const ctx     = this.ctx;
+    const alpha   = 1 - elapsed / 1500;
+    const label   = state.inputMode === 'summon' ? '♪ Summon Mode' : '⚔ Attack Mode';
+    const colour  = state.inputMode === 'summon' ? '#44ff88' : '#ff6666';
+    ctx.save();
+    ctx.globalAlpha  = alpha;
+    ctx.font         = 'bold 42px Georgia, serif';
+    ctx.fillStyle    = colour;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, W / 2, H * 0.62);
+    ctx.restore();
+  }
 
   _drawWaveAnnouncement(state, W, H) {
     if (!state.waveAnnounce || state.wave <= 0) return;

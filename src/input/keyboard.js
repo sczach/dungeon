@@ -1,94 +1,48 @@
 /**
  * @file src/input/keyboard.js
- * Right-hand one-handed piano keyboard input layer.
+ * Right-hand piano keyboard input — locked to C3 octave.
+ * Space bar toggles attack / summon mode.
  *
- * On each note keypress:
- *   1. Write note to state.audio (detectedChord / confidence / detectedNote)
- *   2. Play a short sine-wave tone through the AudioContext
- *   3. Call tablatureSystem.onNote(note, state) — summon logic
- *   4. Call attackSequenceSystem.onNote(note, state) — enemy targeting
- *   5. Add note to state.input.pressedKeys (auto-cleared after 150 ms) — HUD highlight
+ * Normal tone : sine, gain=0.3, 0.5 s.
+ * Kill melody : sine, gain=0.6, 0.5 s + DelayNode reverb (0.2 s, feedback=0.4).
+ *   No ConvolverNode. No external files.
  *
- * KEY MAP (right-hand layout, default octave C3–B3)
- * ──────────────────────────────────────────────────
- *   White keys  │  H=C3  J=D3  K=E3  L=F3  ;=G3  '=A3  Enter=B3
- *   Black keys  │  U=C#3  I=D#3  O=F#3  P=G#3  [=A#3
- *   Octave down │  ,  (minimum C2 / offset −2)
- *   Octave up   │  .  (maximum B4 / offset +2)
- *
- * iOS / MOBILE GOTCHAS
- * ────────────────────
- *   • AudioContext must be resumed inside a user-gesture handler — this module
- *     calls ctx.resume() on every keydown so it works even after suspension.
- *   • We reuse the existing context from capture.js when available; only fall
- *     back to a fresh context if the mic was never started (practice mode).
- *   • The fallback context is stored in _fallbackCtx so at most one extra
- *     context is ever created.
- *   • Do NOT call oscillator.stop() without a future timestamp — use
- *     ctx.currentTime + duration to avoid iOS silence bugs.
+ * iOS gotchas
+ * ───────────
+ *   ctx.resume() called on every gesture.
+ *   Fallback AudioContext created lazily in practice mode (one per page).
+ *   Never call oscillator.stop() without ctx.currentTime + offset.
  */
+import { SCENE }           from '../constants.js';
+import { getAudioContext } from '../audio/capture.js';
 
-import { SCENE }            from '../constants.js';
-import { getAudioContext }  from '../audio/capture.js';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Key → base note mapping  (values are e.key.toLowerCase() strings)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Right-hand piano layout.
- * Keys map to their base-octave note names; octave offset is applied at runtime.
- */
+// ─── Key map ────────────────────────────────────────────────────────────────
 const KEY_TO_NOTE = {
   // White keys
-  'h':     'C3',
-  'j':     'D3',
-  'k':     'E3',
-  'l':     'F3',
-  ';':     'G3',
-  "'":     'A3',
-  'enter': 'B3',
+  'h': 'C3', 'j': 'D3', 'k': 'E3', 'l': 'F3',
+  ';': 'G3', "'": 'A3', 'enter': 'B3',
   // Black keys
-  'u':     'C#3',
-  'i':     'D#3',
-  'o':     'F#3',
-  'p':     'G#3',
-  '[':     'A#3',
+  'u': 'C#3', 'i': 'D#3', 'o': 'F#3', 'p': 'G#3', '[': 'A#3',
 };
 
-const OCTAVE_DOWN_KEY = ',';
-const OCTAVE_UP_KEY   = '.';
-
-/** Auto-clear pressed key from state.input.pressedKeys after this many ms. */
+// ─── Tone constants ──────────────────────────────────────────────────────────
 const PRESS_CLEAR_MS = 150;
+const TONE_DURATION  = 0.5;    // seconds
+const TONE_GAIN      = 0.3;
+const KILL_GAIN      = 0.6;
+const REVERB_DELAY   = 0.2;    // DelayNode delayTime
+const REVERB_FDBK    = 0.4;    // feedback gain
+const MELODY_STEP    = 0.15;   // seconds between kill-melody notes
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tone synthesis — A440 equal temperament
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Base frequencies (Hz) for each pitch class in octave 3.
- * For any other octave n: freq = BASE_FREQ[pitchClass] × 2^(n − 3).
- * @type {Record<string,number>}
- */
+// ─── A440 equal-temperament base frequencies (C3 octave) ────────────────────
 const BASE_FREQ = {
-  'C':  130.81, 'C#': 138.59,
-  'D':  146.83, 'D#': 155.56,
-  'E':  164.81,
-  'F':  174.61, 'F#': 185.00,
-  'G':  196.00, 'G#': 207.65,
-  'A':  220.00, 'A#': 233.08,
-  'B':  246.94,
+  'C': 130.81, 'C#': 138.59, 'D': 146.83, 'D#': 155.56, 'E': 164.81,
+  'F': 174.61, 'F#': 185.00, 'G': 196.00, 'G#': 207.65,
+  'A': 220.00, 'A#': 233.08, 'B': 246.94,
 };
 
-/** Tone duration in seconds. Short enough to not blur sequences. */
-const TONE_DURATION = 0.4;
-/** Output amplitude (0–1). Kept moderate to avoid clipping when fast-pressing. */
-const TONE_GAIN     = 0.3;
-
 /**
- * Compute the frequency in Hz for any note string like "C3", "A#4", "D2".
- * Returns null if the note is malformed.
+ * Hz for any note string "C3", "A#4", etc.
  * @param {string} note
  * @returns {number|null}
  */
@@ -96,88 +50,100 @@ function getNoteFreq(note) {
   const m = note.match(/^([A-G]#?)(\d+)$/);
   if (!m) return null;
   const base = BASE_FREQ[m[1]];
-  if (base == null) return null;
-  return base * Math.pow(2, parseInt(m[2], 10) - 3);
+  return base != null ? base * Math.pow(2, parseInt(m[2], 10) - 3) : null;
 }
 
-/** One shared fallback AudioContext for practice mode (mic never started). */
 let _fallbackCtx = null;
-
-/**
- * Play a short sine-wave tone at the frequency of `note`.
- * Reuses the existing capture AudioContext when available.
- *
- * iOS note: ctx.resume() is called unconditionally — it is a no-op when the
- * context is already 'running' and fixes silent playback after screen lock.
- *
- * @param {string} note — e.g. "C#4"
- */
-function playTone(note) {
-  const freq = getNoteFreq(note);
-  if (freq == null) return;
-
-  // Prefer the shared mic context; fall back to a minimal one-shot context.
+/** Get (or create) the AudioContext. Always resumes it — required on iOS. */
+function getCtx() {
   let ctx = getAudioContext();
   if (!ctx) {
     if (!_fallbackCtx) {
-      const AudioCtx = window.AudioContext ?? window.webkitAudioContext;
-      if (!AudioCtx) return;
-      _fallbackCtx = new AudioCtx();
+      const A = window.AudioContext ?? window.webkitAudioContext;
+      if (!A) return null;
+      _fallbackCtx = new A();
     }
     ctx = _fallbackCtx;
   }
-
-  // Unconditional resume — critical for iOS Safari after suspension.
   ctx.resume().catch(() => {});
-
-  const osc  = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc.type           = 'sine';
-  osc.frequency.value = freq;
-  gain.gain.value    = TONE_GAIN;
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-
-  osc.start();
-  osc.stop(ctx.currentTime + TONE_DURATION);
-  // OscillatorNode is automatically garbage-collected after stop() fires.
+  return ctx;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Shift the octave number embedded in a note string.
- * e.g. shiftOctave('C3', 1) → 'C4'
+ * Play a short normal tone.
  * @param {string} note
- * @param {number} offset — integer semitones of octave (−2 to +2)
- * @returns {string}
  */
-function shiftOctave(note, offset) {
-  if (offset === 0) return note;
-  const m = note.match(/^([A-G]#?)(\d+)$/);
-  if (!m) return note;
-  return m[1] + (parseInt(m[2], 10) + offset);
+function playTone(note) {
+  const freq = getNoteFreq(note);
+  if (!freq) return;
+  const ctx = getCtx();
+  if (!ctx) return;
+  const osc  = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type            = 'sine';
+  osc.frequency.value = freq;
+  gain.gain.value     = TONE_GAIN;
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + TONE_DURATION);
+  console.log(`[tone] ${note} ${freq.toFixed(1)} Hz`);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// KeyboardInput
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Play a sequence of notes as a kill-success melody with simple delay reverb.
+ * Uses DelayNode → feedback GainNode loop (no ConvolverNode, no external files).
+ * Notes are staggered by MELODY_STEP seconds.
+ *
+ * @param {string[]} notes — note names to replay in order
+ */
+export function playSuccessKill(notes) {
+  if (!notes || notes.length === 0) return;
+  const ctx = getCtx();
+  if (!ctx) return;
+  // Build shared reverb: delay → feedbackGain ↩ delay → destination
+  const delay    = ctx.createDelay(1.0);
+  const feedback = ctx.createGain();
+  delay.delayTime.value = REVERB_DELAY;
+  feedback.gain.value   = REVERB_FDBK;
+  delay.connect(feedback);
+  feedback.connect(delay);
+  delay.connect(ctx.destination);
+  const t0 = ctx.currentTime + 0.02;
+  notes.forEach((note, i) => {
+    const freq = getNoteFreq(note);
+    if (!freq) return;
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type            = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.value     = KILL_GAIN;
+    osc.connect(gain);
+    gain.connect(delay);           // wet (reverb)
+    gain.connect(ctx.destination); // dry
+    const t = t0 + i * MELODY_STEP;
+    osc.start(t);
+    osc.stop(t + TONE_DURATION);
+  });
+  console.log(`[kill melody] ${notes.join(' ')}`);
+  // Disconnect reverb tail after all notes + tail decay
+  const cleanupMs = (notes.length * MELODY_STEP + TONE_DURATION + 1.5) * 1000;
+  setTimeout(() => {
+    try { delay.disconnect(); feedback.disconnect(); } catch (_) {}
+  }, cleanupMs);
+}
 
+// ─── KeyboardInput ───────────────────────────────────────────────────────────
 export class KeyboardInput {
   constructor() {
-    this._state    = null;
-    this._handler  = null;
-    this._tablature  = null;
-    this._attackSeq  = null;
-    this._octave   = 0;
+    this._state     = null;
+    this._handler   = null;
+    this._tablature = null;
+    this._attackSeq = null;
   }
 
   /**
-   * Attach the keydown listener and bind subsystems.
+   * Attach keydown listener and bind subsystems.
    * @param {object} state
    * @param {import('../systems/tablature.js').TablatureSystem}           tablatureSystem
    * @param {import('../systems/attackSequence.js').AttackSequenceSystem} attackSeqSystem
@@ -191,70 +157,73 @@ export class KeyboardInput {
     document.addEventListener('keydown', this._handler);
   }
 
-  /**
-   * Remove the keydown listener and clear pressed-key display state.
-   * Safe to call even if start() was never called.
-   */
+  /** Remove listener and clear HUD highlights. */
   stop() {
-    if (this._state && this._state.input) {
-      this._state.input.pressedKeys.clear();
-    }
+    if (this._state?.input) this._state.input.pressedKeys.clear();
     if (this._handler) {
       document.removeEventListener('keydown', this._handler);
       this._handler = null;
     }
   }
 
-  // ── Private ──────────────────────────────────────────────────────────────
+  /**
+   * Programmatic note dispatch — called by touch / click input.
+   * Silently ignored if not in PLAYING scene.
+   * @param {string} note
+   */
+  dispatchNote(note) {
+    const state = this._state;
+    if (!state || state.scene !== SCENE.PLAYING) return;
+    this._handleNote(note, state);
+  }
+
+  // ── Private ─────────────────────────────────────────────────────────────
 
   /** @param {KeyboardEvent} e */
   _onKeyDown(e) {
-    if (!this._state || this._state.scene !== SCENE.PLAYING) return;
-    if (e.repeat) return;
-
-    const key = e.key.toLowerCase();
-
-    // ── Octave shift — adjust register, no game action ───────────────────
-    if (key === OCTAVE_DOWN_KEY) {
-      this._octave = Math.max(-2, this._octave - 1);
-      if (this._state.input) this._state.input.octave = this._octave;
-      return;
-    }
-    if (key === OCTAVE_UP_KEY) {
-      this._octave = Math.min(2, this._octave + 1);
-      if (this._state.input) this._state.input.octave = this._octave;
-      return;
-    }
-
-    const baseNote = KEY_TO_NOTE[key];
-    if (!baseNote) return;
-
-    const note  = shiftOctave(baseNote, this._octave);
     const state = this._state;
+    if (!state || state.scene !== SCENE.PLAYING) return;
+    if (e.repeat) return;
+    // Space bar → toggle attack / summon mode
+    if (e.key === ' ') {
+      e.preventDefault();
+      const next         = state.inputMode === 'summon' ? 'attack' : 'summon';
+      state.inputMode    = next;
+      state.modeAnnounce = performance.now();
+      console.log(`[mode] → ${next}`);
+      return;
+    }
+    const note = KEY_TO_NOTE[e.key.toLowerCase()];
+    if (!note) return;
+    this._handleNote(note, state);
+  }
 
-    // ── 1. Update audio state ─────────────────────────────────────────────
+  /**
+   * Shared note-press logic for keyboard and touch paths.
+   * Routes to tablature (summon) or attack-sequence system based on mode.
+   * @param {string} note
+   * @param {object} state
+   */
+  _handleNote(note, state) {
+    // 1. Audio state
     state.audio.detectedChord = note;
     state.audio.confidence    = 0.95;
     state.audio.detectedNote  = null;
-
-    // ── 2. Tone feedback — short sine burst ───────────────────────────────
-    //    Non-blocking; errors are swallowed so a failed context never crashes.
-    try { playTone(note); } catch (_) { /* swallow — never crash on audio */ }
-
-    // ── 3. Tablature system — summon logic ────────────────────────────────
-    if (this._tablature) this._tablature.onNote(note, state);
-
-    // ── 4. Attack sequence system — enemy targeting ───────────────────────
-    if (this._attackSeq) this._attackSeq.onNote(note, state);
-
-    // ── 5. HUD key highlight (note string, auto-cleared after 150 ms) ─────
+    // 2. Tone
+    try { playTone(note); } catch (_) {}
+    // 3. Route by mode
+    if (state.inputMode === 'summon') {
+      if (this._tablature) this._tablature.onNote(note, state);
+    } else {
+      if (this._attackSeq) this._attackSeq.onNote(note, state);
+    }
+    // 4. HUD highlight
     if (state.input) {
       state.input.pressedKeys.add(note);
-      // Event-driven allocation — not in the animation hot path.
       setTimeout(() => state.input.pressedKeys.delete(note), PRESS_CLEAR_MS);
     }
   }
 }
 
-/** Singleton — import this and call start(state, tabSystem, atkSeqSystem). */
+/** Singleton — import and call start(state, tabSystem, atkSeqSystem). */
 export const keyboardInput = new KeyboardInput();

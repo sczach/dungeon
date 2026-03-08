@@ -1,38 +1,37 @@
 /**
  * @file src/ui/hud.js
- * Canvas-drawn HUD — overlaid on top of the game world during PLAYING.
+ * Canvas-drawn HUD. Pure renderer — reads state, never mutates it.
+ * Also exports piano touch/click input helpers.
  *
  * Layout
  * ──────
- *   Top-left   Wave counter   "Wave N/10"
- *   Top-right  Score          amber number
+ *   Top row (16 px pad):
+ *     left  — Wave N/10
+ *     centre— Resources: N/200
+ *     right — Score
  *
- *   Bottom panel (125 px tall — resource row + piano strip)
- *     Row 1 (55 px): Resource bar + RESOURCES label + action hint
- *     Row 2 (70 px): Piano keyboard — right-hand layout
- *                     White keys  H J K L ; ' Enter  →  C3–B3
- *                     Black keys  U I _ O P [        →  C#3 D#3 _ F#3 G#3 A#3
- *                     Pressed keys highlight in amber (reads state.input.pressedKeys note strings)
+ *   Bottom panel (PANEL_H px):
+ *     Row 1 (28 px): hint text + current mode badge
+ *     Row 2 (70 px): Piano keyboard (50 % screen width, centred)
  *
- * Called once per frame by renderer.js; reads state, never mutates it.
+ * Piano key dimensions
+ * ────────────────────
+ *   7 white keys (C3–B3), 5 black keys.
+ *   PIANO_W = W × 0.5, PIANO_X = (W − PIANO_W) / 2.
+ *   QWERTY labels: 24 px bold (shrunk by measureText if key too narrow).
+ *   Note labels (C3 etc.): shown only when state.showNoteLabels === true.
  *
- * LAYOUT NOTES
- * ────────────
- *   • 7 white keys, 5 black keys (standard one-octave layout C3–B3, no C4).
- *   • Black key label uses short identifiers: '[' stays as '[', Enter shown as '↵'.
- *   • ctx.measureText() used to guard against text overflow on small screens.
- *   • Two-line key labels: large QWERTY label centred at 32% height,
- *     small note name at 68% height.  Fixed row heights prevent overlap.
+ * Touch / click
+ * ─────────────
+ *   getKeyAtPoint(px, py, W, H) → note string | null
+ *   initPianoTouchInput(canvas, onNote) — wires click + touchstart once.
+ *
+ * iOS: touchstart listener uses { passive: false } + preventDefault() to
+ * prevent scroll interference.
  */
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Piano key definitions — right-hand layout
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * White keys in piano order left→right.
- * `key` is the display label shown on the key face.
- */
+// ─── Piano key definitions ─────────────────────────────────────────────────
+/** White keys in piano order, left → right. */
 const WHITE_KEYS = [
   { note: 'C3', key: 'H',  idx: 0 },
   { note: 'D3', key: 'J',  idx: 1 },
@@ -40,50 +39,53 @@ const WHITE_KEYS = [
   { note: 'F3', key: 'L',  idx: 3 },
   { note: 'G3', key: ';',  idx: 4 },
   { note: 'A3', key: "'",  idx: 5 },
-  { note: 'B3', key: '↵',  idx: 6 },   // Enter key — ↵ fits the key width
+  { note: 'B3', key: '↵',  idx: 6 },
 ];
 
 /**
  * Black keys.
- * `afterIdx` — zero-based index of the white key immediately to the left.
- * Centre x = (afterIdx + 0.67) × wkW.
+ * afterIdx = index of the white key immediately to the left.
+ * Centre x = PIANO_X + (afterIdx + 0.67) × wkW.
  */
 const BLACK_KEYS = [
   { note: 'C#3', key: 'U', afterIdx: 0 },
   { note: 'D#3', key: 'I', afterIdx: 1 },
-  // no black between E (idx 2) and F (idx 3)
   { note: 'F#3', key: 'O', afterIdx: 3 },
   { note: 'G#3', key: 'P', afterIdx: 4 },
   { note: 'A#3', key: '[', afterIdx: 5 },
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Colours
-// ─────────────────────────────────────────────────────────────────────────────
-const AMBER      = '#e8a030';
-const PANEL_BG   = 'rgba(10, 10, 15, 0.88)';
-const RES_BAR_BG = '#2a2010';
-const MUTED      = '#7a7060';
+// ─── Colours ───────────────────────────────────────────────────────────────
+const AMBER       = '#e8a030';
+const PANEL_BG    = 'rgba(10, 10, 15, 0.88)';
+const MUTED       = '#7a7060';
+const KEY_WHITE   = '#f0ead6';    // beige white keys
+const KEY_BLACK   = '#2e2e2e';    // dark grey black keys
+const KEY_PRESS   = AMBER;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Dimensions
-// ─────────────────────────────────────────────────────────────────────────────
-const PIANO_H = 70;                  // height of the piano key strip
-const ROW1_H  = 55;                  // height of the resource/hint row above piano
-const PANEL_H = ROW1_H + PIANO_H;   // total bottom panel height
+// ─── Dimensions ───────────────────────────────────────────────────────────
+const PIANO_H  = 70;    // piano strip height
+const ROW1_H   = 28;    // hint + mode row
+const PANEL_H  = ROW1_H + PIANO_H;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main entry point
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Helpers: piano geometry (computed from W / H each frame) ─────────────
+function pianoGeom(W, H) {
+  const PIANO_W  = W * 0.5;
+  const PIANO_X  = (W - PIANO_W) / 2;
+  const wkW      = PIANO_W / WHITE_KEYS.length;
+  const bkW      = wkW * 0.58;
+  const bkH      = PIANO_H * 0.62;
+  const pianoY   = H - PIANO_H;
+  return { PIANO_W, PIANO_X, wkW, bkW, bkH, pianoY };
+}
 
+// ─── Main render ───────────────────────────────────────────────────────────
 /**
  * Render the full in-game HUD.
- * Pure read of state — never mutates anything.
- *
  * @param {CanvasRenderingContext2D} ctx
- * @param {object} state — canonical game state (read-only)
- * @param {number} W     — logical canvas width
- * @param {number} H     — logical canvas height
+ * @param {object} state
+ * @param {number} W
+ * @param {number} H
  */
 export function renderHUD(ctx, state, W, H) {
   ctx.save();
@@ -92,122 +94,181 @@ export function renderHUD(ctx, state, W, H) {
   const PAD  = 16;
   const topY = PAD + 8;
 
-  // ── Wave counter — top-left ──────────────────────────────────────────────
+  // ── Wave — top-left ──────────────────────────────────────────────────────
   ctx.font      = 'bold 16px Georgia, serif';
   ctx.fillStyle = '#f0ead6';
   ctx.textAlign = 'left';
   ctx.fillText(`Wave ${state.wave || 1}/10`, PAD, topY);
 
+  // ── Resources — top-centre ───────────────────────────────────────────────
+  const res = state.resources != null ? Math.floor(state.resources) : 0;
+  ctx.font      = 'bold 14px Georgia, serif';
+  ctx.fillStyle = AMBER;
+  ctx.textAlign = 'center';
+  ctx.fillText(`Resources: ${res} / 200`, W / 2, topY);
+
   // ── Score — top-right ────────────────────────────────────────────────────
+  ctx.font      = 'bold 16px Georgia, serif';
   ctx.fillStyle = AMBER;
   ctx.textAlign = 'right';
   ctx.fillText(String(state.score || 0), W - PAD, topY);
 
   // ── Bottom panel background ──────────────────────────────────────────────
   const panelY = H - PANEL_H;
-  const pianoY = H - PIANO_H;
-
   ctx.fillStyle = PANEL_BG;
   ctx.fillRect(0, panelY, W, PANEL_H);
 
-  // ── Resource bar ─────────────────────────────────────────────────────────
-  const MAX_RES = 200;
-  const res     = state.resources != null ? state.resources : 0;
-  const barW    = Math.min(W * 0.55, 520);
-  const barH    = 14;
-  const barX    = (W - barW) / 2;
-  const barY    = panelY + 11;
-
-  ctx.fillStyle = RES_BAR_BG;
-  ctx.fillRect(barX, barY, barW, barH);
-  ctx.fillStyle = AMBER;
-  ctx.fillRect(barX, barY, barW * Math.min(1, res / MAX_RES), barH);
-  ctx.strokeStyle = '#5a4010';
-  ctx.lineWidth   = 1;
-  ctx.strokeRect(barX, barY, barW, barH);
-
-  ctx.font      = 'bold 11px Georgia, serif';
-  ctx.fillStyle = '#f0ead6';
-  ctx.textAlign = 'left';
-  ctx.fillText('RESOURCES', barX, barY + barH / 2);
-  ctx.textAlign = 'right';
-  ctx.fillText(`${Math.floor(res)} / ${MAX_RES}`, barX + barW, barY + barH / 2);
-
-  // ── Action hint ──────────────────────────────────────────────────────────
+  // ── Row 1: hint text + mode badge ────────────────────────────────────────
+  const hintY = panelY + ROW1_H / 2;
   ctx.font      = '10px Georgia, serif';
   ctx.fillStyle = MUTED;
   ctx.textAlign = 'center';
   ctx.fillText(
-    'H–↵ = notes  |  U I O P [ = sharps  |  , / . = octave ↓↑',
-    W / 2, panelY + 38,
+    "H=C3 J=D3 K=E3 L=F3 ;=G3 '=A3 Enter=B3 | U I O P [=sharps | Space=mode",
+    W / 2, hintY,
   );
 
-  // ── Piano keyboard ─────────────────────────────────────────────────────
-  const wkCount = WHITE_KEYS.length;   // 7 (C3 through B3)
-  const wkW     = W / wkCount;
-  const bkW     = wkW * 0.58;
-  const bkH     = PIANO_H * 0.62;
+  // Mode badge — top-right of panel row
+  if (state.inputMode) {
+    const isSummon = state.inputMode === 'summon';
+    ctx.font      = 'bold 11px Georgia, serif';
+    ctx.fillStyle = isSummon ? '#44ff88' : '#ff6666';
+    ctx.textAlign = 'right';
+    ctx.fillText(isSummon ? '♪ SUMMON' : '⚔ ATTACK', W - PAD, hintY);
+  }
 
+  // ── Piano keyboard ───────────────────────────────────────────────────────
+  const { PIANO_X, wkW, bkW, bkH, pianoY } = pianoGeom(W, H);
   const pressedKeys = (state.input && state.input.pressedKeys) || new Set();
+  const showLabels  = state.showNoteLabels === true;
 
   // White keys
-  for (let i = 0; i < wkCount; i++) {
+  for (let i = 0; i < WHITE_KEYS.length; i++) {
     const wk      = WHITE_KEYS[i];
-    const kx      = wk.idx * wkW;
+    const kx      = PIANO_X + wk.idx * wkW;
     const pressed = pressedKeys.has(wk.note);
 
-    ctx.fillStyle   = pressed ? AMBER : '#f0ead6';
+    ctx.fillStyle   = pressed ? KEY_PRESS : KEY_WHITE;
     ctx.strokeStyle = '#2a2010';
     ctx.lineWidth   = 1;
     ctx.fillRect(kx, pianoY, wkW - 1, PIANO_H);
     ctx.strokeRect(kx, pianoY, wkW - 1, PIANO_H);
 
-    // QWERTY label — centred at 32% height; font sized to fit
-    const kFs = Math.max(9, Math.min(15, wkW * 0.22));
-    ctx.font         = `bold ${kFs}px Georgia, serif`;
-    ctx.fillStyle    = pressed ? '#3a2000' : '#3a3030';
+    const labelY = showLabels ? pianoY + PIANO_H * 0.30 : pianoY + PIANO_H * 0.44;
+
+    // QWERTY label — 24 px bold, shrink if needed
+    ctx.font = 'bold 24px Georgia, serif';
+    const lw = ctx.measureText(wk.key).width;
+    if (lw > wkW - 6) {
+      ctx.font = `bold ${Math.max(9, (24 * (wkW - 6) / lw)) | 0}px Georgia, serif`;
+    }
+    ctx.fillStyle    = pressed ? '#3a2000' : '#2a2020';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    // Measure and shrink if overflowing (e.g. '↵' can be wide on some fonts)
-    const labelW = ctx.measureText(wk.key).width;
-    if (labelW > wkW - 4) {
-      ctx.font = `bold ${Math.max(7, kFs * ((wkW - 4) / labelW)) | 0}px Georgia, serif`;
-    }
-    ctx.fillText(wk.key, kx + wkW / 2, pianoY + PIANO_H * 0.32);
+    ctx.fillText(wk.key, kx + wkW / 2, labelY);
 
-    // Note name — centred at 68% height
-    const nFs = Math.max(7, Math.min(10, wkW * 0.14));
-    ctx.font      = `${nFs}px Georgia, serif`;
-    ctx.fillStyle = pressed ? '#3a2000' : MUTED;
-    ctx.fillText(wk.note, kx + wkW / 2, pianoY + PIANO_H * 0.68);
+    // Note label (optional)
+    if (showLabels) {
+      ctx.font      = `${Math.max(7, Math.min(10, wkW * 0.13)) | 0}px Georgia, serif`;
+      ctx.fillStyle = pressed ? '#3a2000' : MUTED;
+      ctx.fillText(wk.note, kx + wkW / 2, pianoY + PIANO_H * 0.70);
+    }
   }
 
-  // Black keys (drawn on top)
+  // Black keys
   for (let i = 0; i < BLACK_KEYS.length; i++) {
     const bk      = BLACK_KEYS[i];
-    const kx      = (bk.afterIdx + 0.67) * wkW - bkW / 2;
+    const kx      = PIANO_X + (bk.afterIdx + 0.67) * wkW - bkW / 2;
     const pressed = pressedKeys.has(bk.note);
 
-    ctx.fillStyle   = pressed ? AMBER : '#1a1a28';
+    ctx.fillStyle   = pressed ? KEY_PRESS : KEY_BLACK;
     ctx.strokeStyle = '#0a0a0f';
     ctx.lineWidth   = 1;
     ctx.fillRect(kx, pianoY, bkW, bkH);
     ctx.strokeRect(kx, pianoY, bkW, bkH);
 
-    // QWERTY label
-    const kFs = Math.max(7, Math.min(12, bkW * 0.32));
+    // QWERTY label (bold, sized to fit narrow key)
+    const kFs = Math.max(7, Math.min(13, bkW * 0.34)) | 0;
     ctx.font         = `bold ${kFs}px Georgia, serif`;
     ctx.fillStyle    = pressed ? '#3a2000' : '#f0ead6';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(bk.key, kx + bkW / 2, pianoY + bkH * 0.28);
+    ctx.fillText(bk.key, kx + bkW / 2, pianoY + bkH * (showLabels ? 0.25 : 0.38));
 
-    // Note name
-    const nFs = Math.max(6, Math.min(9, bkW * 0.22));
-    ctx.font      = `${nFs}px Georgia, serif`;
-    ctx.fillStyle = pressed ? '#3a2000' : MUTED;
-    ctx.fillText(bk.note, kx + bkW / 2, pianoY + bkH * 0.65);
+    if (showLabels) {
+      const nFs = Math.max(6, Math.min(9, bkW * 0.20)) | 0;
+      ctx.font      = `${nFs}px Georgia, serif`;
+      ctx.fillStyle = pressed ? '#3a2000' : MUTED;
+      ctx.fillText(bk.note, kx + bkW / 2, pianoY + bkH * 0.65);
+    }
   }
 
   ctx.restore();
+}
+
+// ─── Touch / click support ─────────────────────────────────────────────────
+
+/**
+ * Map a canvas-relative point to a note name, or null if outside the piano.
+ * Uses the same 50 %-centred geometry as renderHUD.
+ *
+ * Check black keys first — they sit on top of white keys visually.
+ *
+ * @param {number} px   — x in logical (CSS) pixels
+ * @param {number} py   — y in logical (CSS) pixels
+ * @param {number} W    — logical canvas width
+ * @param {number} H    — logical canvas height
+ * @returns {string|null}
+ */
+export function getKeyAtPoint(px, py, W, H) {
+  const { PIANO_X, PIANO_W, wkW, bkW, bkH, pianoY } = pianoGeom(W, H);
+  if (py < pianoY || py > H || px < PIANO_X || px > PIANO_X + PIANO_W) return null;
+  // Black keys first (higher z-order)
+  for (const bk of BLACK_KEYS) {
+    const kx = PIANO_X + (bk.afterIdx + 0.67) * wkW - bkW / 2;
+    if (px >= kx && px <= kx + bkW && py <= pianoY + bkH) return bk.note;
+  }
+  // White keys
+  for (const wk of WHITE_KEYS) {
+    const kx = PIANO_X + wk.idx * wkW;
+    if (px >= kx && px <= kx + wkW - 1) return wk.note;
+  }
+  return null;
+}
+
+/**
+ * Register click and touchstart listeners on `canvas`.
+ * When a piano key is hit, calls `onNote(noteString)`.
+ * Must be called only once per canvas element.
+ *
+ * @param {HTMLCanvasElement} canvas
+ * @param {function(string):void} onNote
+ */
+export function initPianoTouchInput(canvas, onNote) {
+  function coordsFromMouse(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function onClick(e) {
+    const { x, y } = coordsFromMouse(e);
+    const note = getKeyAtPoint(x, y, canvas.offsetWidth, canvas.offsetHeight);
+    if (note) {
+      onNote(note);
+      console.log(`[touch/click] key ${note}`);
+    }
+  }
+  function onTouchStart(e) {
+    e.preventDefault();   // block ghost clicks & page scroll on mobile / iOS
+    const t = e.touches[0];
+    if (!t) return;
+    const r    = canvas.getBoundingClientRect();
+    const note = getKeyAtPoint(t.clientX - r.left, t.clientY - r.top,
+                               canvas.offsetWidth, canvas.offsetHeight);
+    if (note) {
+      onNote(note);
+      console.log(`[touch] key ${note}`);
+    }
+  }
+  canvas.addEventListener('click', onClick);
+  canvas.addEventListener('touchstart', onTouchStart, { passive: false });
 }
