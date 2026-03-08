@@ -186,96 +186,153 @@ export class Renderer {
   // ─────────────────────────────────────────
 
   /**
-   * Scrolling note-slot bar at the top of the screen.
-   * 6 slots; leftmost is active (amber border, larger text).
-   * Slot status colours: pending=dark, hit=green, miss=red.
+   * 3-note summon prompt bar at the top of the screen.
+   * Only visible when state.inputMode === 'summon'.
+   * Larger pills + 5-line staff notation above the pill row.
+   * Red flash overlay when last summon was blocked by insufficient resources.
    */
-  _drawTablature(state, W, H) {
+  _drawTablature(state, W, H) {       // eslint-disable-line no-unused-vars
+    if (state.inputMode !== 'summon') return;   // hidden in attack mode
     if (!state.tablature || !state.tablature.queue.length) return;
     const tab = state.tablature;
 
-    const BAR_Y  = 40;
-    const BAR_H  = 60;
-    const BAR_W  = W * 0.70;
-    const BAR_X  = (W - BAR_W) / 2;
-    const SLOTS  = 6;
-    const slotW  = BAR_W / SLOTS;
-    const ctx    = this.ctx;
+    const BAR_Y   = 8;
+    const BAR_H   = 96;   // taller than kill cues for prominence
+    const BAR_W   = W * 0.55;
+    const BAR_X   = (W - BAR_W) / 2;
+    const SLOTS   = 3;    // 3-note prompt
+    const slotW   = BAR_W / SLOTS;
+    const ctx     = this.ctx;
+    const now     = performance.now();
 
     ctx.save();
 
     // Panel background
-    ctx.fillStyle   = 'rgba(10, 10, 15, 0.85)';
+    ctx.fillStyle   = 'rgba(10, 10, 15, 0.88)';
     ctx.fillRect(BAR_X, BAR_Y, BAR_W, BAR_H);
     ctx.strokeStyle = '#3a3040';
     ctx.lineWidth   = 1;
     ctx.strokeRect(BAR_X, BAR_Y, BAR_W, BAR_H);
 
-    // Slots
+    // "SUMMON" label — top-left of bar
+    ctx.font         = 'bold 9px Georgia, serif';
+    ctx.fillStyle    = '#44ff88';
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('♪ SUMMON', BAR_X + 6, BAR_Y + 4);
+
+    // ── 5-line staff spanning the full bar ─────────────────────────────────
+    const STAFF_TOP  = BAR_Y + 14;
+    const STAFF_H    = 24;    // 5 lines with 4 gaps of 6px each
+    const STEP       = STAFF_H / 8;   // same formula as enemy sequences
+    ctx.strokeStyle  = 'rgba(200,185,155,0.45)';
+    ctx.lineWidth    = 0.5;
+    for (let l = 0; l < 5; l++) {
+      const ly = STAFF_TOP + STAFF_H - l * STEP * 2;
+      ctx.beginPath();
+      ctx.moveTo(BAR_X + 4, ly);
+      ctx.lineTo(BAR_X + BAR_W - 4, ly);
+      ctx.stroke();
+    }
+
+    // Note heads on staff, evenly distributed across bar width
+    const headStep = BAR_W / (SLOTS + 1);
     for (let i = 0; i < SLOTS; i++) {
       if (i >= tab.queue.length) break;
-      const slot     = tab.queue[i];
-      const isActive = (i === 0);
-      const sx       = BAR_X + i * slotW;
-      const pad      = 4;
+      const slot    = tab.queue[i];
+      const pos     = NOTE_TO_STAFF_POS[slot.note] ?? 3;
+      const ny      = STAFF_TOP + STAFF_H - pos * STEP;
+      const nx      = BAR_X + headStep * (i + 0.6);
+      const isDone  = slot.status === 'hit';
+      const isMiss  = slot.status === 'miss';
+      ctx.beginPath();
+      ctx.ellipse(nx, ny, 5.5, 3.5, -0.18, 0, Math.PI * 2);
+      ctx.fillStyle   = isDone ? '#44ff88' : isMiss ? '#ff4444' : i === 0 ? CLR.ACCENT : 'rgba(240,234,214,0.55)';
+      ctx.strokeStyle = 'rgba(30,20,10,0.7)';
+      ctx.lineWidth   = 0.5;
+      ctx.fill();
+      ctx.stroke();
+    }
 
-      // Background fill per status
-      let bg = '#1e1e2e';
-      if (slot.status === 'hit')  bg = '#0a2a0a';
-      if (slot.status === 'miss') bg = '#2a0a0a';
-      ctx.fillStyle = bg;
-      ctx.fillRect(sx + pad, BAR_Y + pad, slotW - pad * 2, BAR_H - pad * 2);
+    // ── Pill row ───────────────────────────────────────────────────────────
+    const PILL_H  = 26;
+    const PILL_W  = slotW * 0.78;
+    const PILL_Y  = BAR_Y + BAR_H - PILL_H - 6;
+    const t       = state.time || 0;
 
-      // Active slot amber border
-      if (isActive) {
-        ctx.strokeStyle = CLR.ACCENT;
-        ctx.lineWidth   = 2;
-        ctx.strokeRect(sx + pad, BAR_Y + pad, slotW - pad * 2, BAR_H - pad * 2);
-      }
+    for (let i = 0; i < SLOTS; i++) {
+      if (i >= tab.queue.length) break;
+      const slot      = tab.queue[i];
+      const isActive  = (i === 0);
+      const isDone    = slot.status === 'hit';
+      const isMiss    = slot.status === 'miss';
 
-      // Note name
-      const noteColor = slot.status === 'hit'  ? '#44ff88'
-                      : slot.status === 'miss' ? '#ff4444'
-                      : isActive               ? CLR.ACCENT
-                                               : CLR.TEXT;
-      ctx.font         = `bold ${isActive ? 20 : 14}px Georgia, serif`;
+      const scale = isActive ? 1 + 0.08 * Math.sin(t * 6) : 1;
+      const pw    = PILL_W * scale;
+      const ph    = PILL_H * scale;
+      const px    = BAR_X + i * slotW + (slotW - pw) / 2;
+      const py    = PILL_Y + (PILL_H - ph) / 2;
+
+      ctx.fillStyle = isDone ? '#0d3a18' : isMiss ? '#3a0a0a' : isActive ? '#3a2800' : '#1e1e2e';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 4);
+      else ctx.rect(px, py, pw, ph);
+      ctx.fill();
+
+      ctx.strokeStyle = isDone ? '#44ff88' : isMiss ? '#ff4444' : isActive ? CLR.ACCENT : '#4a4a5a';
+      ctx.lineWidth   = isActive ? 2 : 1;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 4);
+      else ctx.rect(px, py, pw, ph);
+      ctx.stroke();
+
+      const noteColor = isDone ? '#44ff88' : isMiss ? '#ff4444' : isActive ? CLR.ACCENT : CLR.TEXT;
+      ctx.font         = `bold ${isActive ? 16 : 13}px Georgia, serif`;
       ctx.fillStyle    = noteColor;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(slot.note, sx + slotW / 2, BAR_Y + BAR_H / 2 - 7);
+      ctx.fillText(slot.note, px + pw / 2, py + ph / 2 - 4);
 
-      // QWERTY key label
-      ctx.font      = '10px Georgia, serif';
+      ctx.font      = `${isActive ? 11 : 9}px Georgia, serif`;
       ctx.fillStyle = isActive ? CLR.ACCENT : CLR.MUTED;
-      ctx.fillText(`[${slot.key.toUpperCase()}]`, sx + slotW / 2, BAR_Y + BAR_H / 2 + 12);
+      ctx.fillText(`[${slot.key.toUpperCase()}]`, px + pw / 2, py + ph / 2 + 9);
     }
 
     // Combo counter (top-right of bar)
     if (tab.combo > 0) {
-      ctx.font         = 'bold 13px Georgia, serif';
+      ctx.font         = 'bold 11px Georgia, serif';
       ctx.fillStyle    = CLR.ACCENT;
       ctx.textAlign    = 'right';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`×${tab.combo}`, BAR_X + BAR_W - 6, BAR_Y + BAR_H / 2);
+      ctx.textBaseline = 'top';
+      ctx.fillText(`×${tab.combo}`, BAR_X + BAR_W - 6, BAR_Y + 4);
     }
 
-    // ── Summon cooldown overlay ───────────────────────────────────────────
+    // ── Summon cooldown overlay ────────────────────────────────────────────
     const cooldownEnd = tab.summonCooldownEnd || 0;
-    const now         = performance.now();
     if (cooldownEnd > now) {
-      // Dim the whole bar to signal blocked spawning
       ctx.globalAlpha = 0.4;
       ctx.fillStyle   = 'rgba(10, 10, 15, 0.6)';
       ctx.fillRect(BAR_X, BAR_Y, BAR_W, BAR_H);
-
-      // Countdown label at full opacity (restore before drawing text)
       ctx.globalAlpha  = 1;
       const secsLeft   = ((cooldownEnd - now) / 1000).toFixed(1);
-      ctx.font         = 'bold 15px Georgia, serif';
+      ctx.font         = 'bold 13px Georgia, serif';
       ctx.fillStyle    = CLR.ACCENT;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(`Cooldown ${secsLeft}s`, BAR_X + BAR_W / 2, BAR_Y + BAR_H / 2);
+    }
+
+    // ── Resource-blocked red flash ─────────────────────────────────────────
+    if (tab.blocked) {
+      ctx.globalAlpha = 0.38;
+      ctx.fillStyle   = '#ff2222';
+      ctx.fillRect(BAR_X, BAR_Y, BAR_W, BAR_H);
+      ctx.globalAlpha  = 1;
+      ctx.font         = 'bold 13px Georgia, serif';
+      ctx.fillStyle    = '#ff6666';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Not enough resources!', BAR_X + BAR_W / 2, BAR_Y + BAR_H / 2);
     }
 
     ctx.restore();
