@@ -117,9 +117,9 @@ export function playSuccessKill(notes) {
     phrase.push(m ? `${m[1]}${parseInt(m[2], 10) + 1}` : last);
   }
 
-  // Eighth-note tempo at ~165 bpm: step = 0.18 s, note duration = 0.26 s
+  // Eighth-note tempo at ~165 bpm: step = 0.18 s, note duration = 0.14 s (40 ms gap)
   const NOTE_STEP = 0.18;
-  const NOTE_DUR  = 0.26;
+  const NOTE_DUR  = 0.14;
 
   // Shared reverb: delay → feedback → delay → destination
   const delay    = ctx.createDelay(1.0);
@@ -138,7 +138,7 @@ export function playSuccessKill(notes) {
     if (!freq) return;
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type            = 'sine';
+    osc.type            = 'triangle';
     osc.frequency.value = freq;
     osc.connect(gain);
     gain.connect(delay);           // wet (reverb)

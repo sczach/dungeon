@@ -178,7 +178,6 @@ export class Renderer {
     this._drawUnits(state);
     this._drawEnemySequences(state, W, H);
     this._drawTablature(state, W, H);       // top-of-screen summon prompt (above map)
-    this._drawChordCue(state, W, H);        // chord name + tab (above map)
     this._drawWaveAnnouncement(state, W, H);
     this._drawModeAnnouncement(state, W, H);
     renderHUD(this.ctx, state, W, H);
@@ -250,7 +249,7 @@ export class Renderer {
       const isMiss  = slot.status === 'miss';
       ctx.beginPath();
       ctx.ellipse(nx, ny, 5.5, 3.5, -0.18, 0, Math.PI * 2);
-      ctx.fillStyle   = isDone ? '#44ff88' : isMiss ? '#ff4444' : i === 0 ? CLR.ACCENT : 'rgba(240,234,214,0.55)';
+      ctx.fillStyle   = isDone ? '#44ff88' : isMiss ? '#ff4444' : (i === tab.activeIndex) ? CLR.ACCENT : 'rgba(240,234,214,0.55)';
       ctx.strokeStyle = 'rgba(30,20,10,0.7)';
       ctx.lineWidth   = 0.5;
       ctx.fill();
@@ -266,7 +265,7 @@ export class Renderer {
     for (let i = 0; i < SLOTS; i++) {
       if (i >= tab.queue.length) break;
       const slot      = tab.queue[i];
-      const isActive  = (i === 0);
+      const isActive  = (i === tab.activeIndex);
       const isDone    = slot.status === 'hit';
       const isMiss    = slot.status === 'miss';
 

@@ -1,52 +1,53 @@
 /**
  * @file src/systems/tablature.js
- * Scrolling note-sequence summon bar — the primary unit-summon mechanic.
+ * Fixed 3-note sequence summon bar — the primary unit-summon mechanic.
  *
  * HOW IT WORKS
  * ────────────
- *   A horizontal strip at the top of the screen shows 6 note slots.
- *   The leftmost slot is always the "active" note the player must press.
- *   Correct note → slot flashes green, advances; wrong note → flashes red,
- *   resets the sequence back to a fresh queue.
+ *   A horizontal strip shows a fixed 3-note sequence.
+ *   tab.activeIndex (0/1/2) tracks which note the player must press next.
+ *   Correct note → pill flashes green, activeIndex advances.
+ *   Wrong note   → active pill flashes red briefly, then reverts to pending.
+ *                  Sequence does NOT reset; activeIndex does NOT change.
+ *   All 3 correct → pendingSpawn = 1, cooldown starts, new sequence queued.
  *
- * SPAWNING (free — the sequence IS the resource cost)
- * ─────────────────────────────────────────────────────
- *   Every 3 consecutive correct notes → state.tablature.pendingSpawn = 1 (tier 1)
- *   Every 5                           → pendingSpawn = 2 (tier 2)
- *   Every 7                           → pendingSpawn = 3 (tier 3)
- *   (Higher tier takes priority at shared multiples.)
+ * SPAWNING (costs resources — see game.js SUMMON_COST table)
+ * ──────────────────────────────────────────────────────────
+ *   Each completed 3-note sequence → state.tablature.pendingSpawn = 1 (tier 1).
+ *   game.js checks resources; if sufficient deducts cost and spawns the unit.
+ *   If insufficient → tab.blocked = true → red-flash overlay for 600 ms.
  *
  * ANTI-MASHING
  * ────────────
- *   Global summon cooldown: 2000 ms after any successful summon.
- *   During cooldown pendingSpawn is NOT set (combo still increments).
- *   Screen unit cap: max 8 player units.  Same rule — combo advances but no spawn.
- *   Both limits are tracked in state.tablature.summonCooldownEnd
- *   (performance.now() timestamp; 0 = no active cooldown).
+ *   Summon cooldown: 2000 ms after any successful sequence completion.
+ *   During cooldown the bar is dimmed; pendingSpawn is not set.
+ *   Screen unit cap: max 8 player units — same rule.
  *
  * UPDATE MODEL
  * ────────────
- *   Slot state transitions are driven by update() via wall-clock timestamps —
- *   no setTimeouts.  onNote() is called event-driven from keyboard input.
+ *   Slot state transitions driven by wall-clock timestamps — no setTimeouts.
+ *   onNote() is called event-driven from keyboard input.
  */
 
-/** White keys available for queue generation (right-hand layout, C3–B3). */
+/** White keys available for sequence generation (right-hand layout, C3–B3). */
 const WHITE_NOTES = ['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3'];
 /** Matching display key labels (uppercase, mirrors KEY_TO_NOTE in keyboard.js). */
 const WHITE_KEYS  = ['H',  'J',  'K',  'L',  ';',  "'",  '↵'];
 
-/** How long a hit slot stays visible (green flash) before advancing. */
-const HIT_FLASH_MS  = 200;
-/** How long a miss slot stays visible (red flash) before queue resets. */
-const MISS_RESET_MS = 300;
+/** How long a correct (green) flash stays before the next note becomes active. */
+const HIT_FLASH_MS      = 250;
+/** How long a wrong (red) flash stays before reverting to pending. */
+const MISS_FLASH_MS     = 350;
+/** Delay after all 3 notes hit before generating the next sequence. */
+const SEQUENCE_DONE_MS  = 600;
 /** Cooldown between successful spawns (ms). Anti-mashing mechanic. */
 const SUMMON_COOLDOWN_MS = 2000;
 /** Maximum simultaneous player units. Spawn blocked (but combo continues) at cap. */
-const MAX_PLAYER_UNITS = 8;
+const MAX_PLAYER_UNITS  = 8;
 /** How long the "not enough resources" red-flash stays visible (ms). */
-const BLOCKED_FLASH_MS = 600;
-/** How often the 3-note prompt auto-refreshes if player doesn't complete it (ms). */
-const PROMPT_REFRESH_MS = 10000;
+const BLOCKED_FLASH_MS  = 600;
+/** Auto-refresh if player ignores the current sequence for this long (ms). */
+const PROMPT_REFRESH_MS = 15000;
 
 export class TablatureSystem {
   /**
@@ -55,21 +56,21 @@ export class TablatureSystem {
    * @param {object} state
    */
   reset(state) {
-    const tab            = state.tablature;
-    tab.queue            = [];
-    tab.combo            = 0;
-    tab.activeIndex      = 0;   // always 0 — leftmost slot is always active
-    tab.pendingSpawn     = null;
-    tab.summonCooldownEnd = 0;  // performance.now() when cooldown expires; 0 = none
-    tab.nextRefreshTime  = 0;   // performance.now() when 3-note prompt auto-refreshes
-    tab.blocked          = false; // true = resource check failed; drives red flash
-    tab.blockedTime      = 0;   // performance.now() when blocked was set
+    const tab             = state.tablature;
+    tab.queue             = [];
+    tab.combo             = 0;
+    tab.activeIndex       = 0;
+    tab.pendingSpawn      = null;
+    tab.summonCooldownEnd = 0;
+    tab.nextRefreshTime   = 0;
+    tab.blocked           = false;
+    tab.blockedTime       = 0;
+    tab.sequenceDoneTime  = 0;  // performance.now() when all 3 were hit; 0 = not done
     this._fillQueue(tab);
   }
 
   /**
    * Per-frame update — advance slot transitions by wall-clock time.
-   * No allocation in steady state; allocates only on slot transition (≤ once / 200 ms).
    * @param {number} _dt  — delta time in seconds (unused; transitions use performance.now)
    * @param {object} state
    */
@@ -79,22 +80,29 @@ export class TablatureSystem {
 
     if (!tab.queue.length) { this._fillQueue(tab); return; }
 
-    const slot = tab.queue[0];
+    // Revert any 'miss' slots back to 'pending' after flash duration
+    for (let i = 0; i < tab.queue.length; i++) {
+      const slot = tab.queue[i];
+      if (slot.status === 'miss' && (now - slot.statusTime) >= MISS_FLASH_MS) {
+        slot.status = 'pending';
+      }
+    }
 
-    if (slot.status === 'hit' && (now - slot.statusTime) >= HIT_FLASH_MS) {
-      tab.queue.shift();          // advance (event-driven alloc — fine)
-      this._fillQueue(tab);
-    } else if (slot.status === 'miss' && (now - slot.statusTime) >= MISS_RESET_MS) {
-      tab.queue = [];             // reset (event-driven alloc — fine)
+    // After sequence-done delay, generate a fresh sequence
+    if (tab.sequenceDoneTime > 0 && (now - tab.sequenceDoneTime) >= SEQUENCE_DONE_MS) {
+      tab.queue            = [];
+      tab.activeIndex      = 0;
+      tab.sequenceDoneTime = 0;
       this._fillQueue(tab);
     }
 
-    // Auto-refresh 3-note prompt every PROMPT_REFRESH_MS even if not completed
-    if (tab.nextRefreshTime > 0 && now >= tab.nextRefreshTime) {
-      tab.queue = [];
-      tab.combo = 0;
+    // Auto-refresh if player ignores the sequence for too long
+    if (tab.nextRefreshTime > 0 && now >= tab.nextRefreshTime && tab.sequenceDoneTime === 0) {
+      tab.queue            = [];
+      tab.activeIndex      = 0;
+      tab.combo            = 0;
       this._fillQueue(tab);
-      console.log('[summon] prompt auto-refreshed (10s timer)');
+      console.log('[summon] prompt auto-refreshed (15s timer)');
     }
 
     // Clear resource-blocked red flash after BLOCKED_FLASH_MS
@@ -104,41 +112,35 @@ export class TablatureSystem {
   }
 
   /**
-   * Called by keyboard input on each note press.
-   * Updates combo, flash status, and (when eligible) pendingSpawn.
-   *
-   * Spawn is blocked — but combo still advances — when:
-   *   • summon cooldown is active (< 2 s since last spawn), OR
-   *   • player unit count has reached MAX_PLAYER_UNITS.
+   * Called by keyboard input on each note press in SUMMON mode.
+   * Advances activeIndex on correct note; flashes red on wrong note (no reset).
    *
    * @param {string} note  — pressed note name e.g. "C3"
    * @param {object} state
    */
   onNote(note, state) {
-    const tab  = state.tablature;
+    const tab = state.tablature;
     if (!tab.queue.length) return;
-
-    const slot = tab.queue[0];
-    if (slot.status !== 'pending') return;   // already transitioning
+    if (tab.sequenceDoneTime > 0) return;  // waiting for new sequence generation
 
     const now = performance.now();
+    const idx = tab.activeIndex;
+    if (idx >= tab.queue.length) return;
+
+    const slot = tab.queue[idx];
+    if (slot.status === 'miss') return;  // still showing red flash — ignore input
 
     if (note === slot.note) {
+      // Correct note — advance
       slot.status     = 'hit';
       slot.statusTime = now;
-      tab.combo++;
+      tab.activeIndex++;
 
-      // Determine target tier (higher wins at shared multiples, e.g. 35 = 5×7 → tier 3)
-      let spawnTier = 0;
-      if      (tab.combo % 7 === 0) spawnTier = 3;
-      else if (tab.combo % 5 === 0) spawnTier = 2;
-      else if (tab.combo % 3 === 0) spawnTier = 1;
+      if (tab.activeIndex >= tab.queue.length) {
+        // All 3 notes completed — try to trigger a summon
+        tab.combo++;
+        const cooldownActive = now < (tab.summonCooldownEnd || 0);
 
-      if (spawnTier > 0) {
-        // Check anti-mashing constraints before setting pendingSpawn
-        const cooldownActive = now < tab.summonCooldownEnd;
-
-        // Count live player units (zero-allocation: indexed loop)
         let playerCount = 0;
         const units = state.units;
         for (let i = 0; i < units.length; i++) {
@@ -147,28 +149,33 @@ export class TablatureSystem {
         const atCap = playerCount >= MAX_PLAYER_UNITS;
 
         if (!cooldownActive && !atCap) {
-          tab.pendingSpawn      = spawnTier;
+          tab.pendingSpawn      = 1;  // always tier 1 per 3-note sequence
           tab.summonCooldownEnd = now + SUMMON_COOLDOWN_MS;
         }
-        // If blocked: combo/score still advanced (pendingSpawn just not set)
+
+        tab.sequenceDoneTime = now;
+        tab.nextRefreshTime  = 0;  // will be reset when new sequence fills
+        console.log(`[summon] sequence complete combo=${tab.combo} pendingSpawn=${tab.pendingSpawn}`);
       }
     } else {
+      // Wrong note — flash the active pill red; DO NOT reset sequence
       slot.status     = 'miss';
       slot.statusTime = now;
-      tab.combo       = 0;
     }
   }
 
   /**
-   * Discard the current prompt and generate a fresh 3-note sequence immediately.
+   * Discard the current prompt and generate a fresh sequence immediately.
    * Called on mode toggle (Space bar) to give the player a clean slate.
    * @param {object} state
    */
   refresh(state) {
-    const tab = state.tablature;
-    tab.queue  = [];
-    tab.combo  = 0;
-    tab.blocked = false;
+    const tab            = state.tablature;
+    tab.queue            = [];
+    tab.activeIndex      = 0;
+    tab.blocked          = false;
+    tab.sequenceDoneTime = 0;
+    tab.combo            = 0;
     this._fillQueue(tab);
     console.log('[summon] prompt refreshed (mode toggle)');
   }
@@ -176,11 +183,10 @@ export class TablatureSystem {
   // ── Private ─────────────────────────────────────────────────────────────
 
   /**
-   * Append random slots until the queue has exactly 3 entries.
-   * Sets the auto-refresh timer whenever the queue was empty (fresh prompt).
+   * Generate exactly 3 random note slots and set the auto-refresh timer.
+   * @param {object} tab — state.tablature
    */
   _fillQueue(tab) {
-    const wasEmpty = tab.queue.length === 0;
     while (tab.queue.length < 3) {
       const i = Math.floor(Math.random() * WHITE_NOTES.length);
       tab.queue.push({
@@ -190,9 +196,7 @@ export class TablatureSystem {
         statusTime: 0,
       });
     }
-    if (wasEmpty) {
-      tab.nextRefreshTime = performance.now() + PROMPT_REFRESH_MS;
-      console.log('[summon prompt] new: ' + tab.queue.map(s => s.note).join(' '));
-    }
+    tab.nextRefreshTime = performance.now() + PROMPT_REFRESH_MS;
+    console.log('[summon prompt] new: ' + tab.queue.map(s => s.note).join(' '));
   }
 }

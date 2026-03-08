@@ -154,22 +154,21 @@ export function renderHUD(ctx, state, W, H) {
     ctx.fillRect(kx, pianoY, wkW - 1, PIANO_H);
     ctx.strokeRect(kx, pianoY, wkW - 1, PIANO_H);
 
-    const labelY = showLabels ? pianoY + PIANO_H * 0.30 : pianoY + PIANO_H * 0.44;
-
-    // QWERTY label — 24 px bold, shrink if needed
-    ctx.font = 'bold 24px Georgia, serif';
-    const lw = ctx.measureText(wk.key).width;
-    if (lw > wkW - 6) {
-      ctx.font = `bold ${Math.max(9, (24 * (wkW - 6) / lw)) | 0}px Georgia, serif`;
-    }
-    ctx.fillStyle    = pressed ? '#3a2000' : '#2a2020';
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(wk.key, kx + wkW / 2, labelY);
-
-    // Note label (optional)
+    // QWERTY + note labels — both hidden when showNoteLabels is off
     if (showLabels) {
-      ctx.font      = `${Math.max(7, Math.min(10, wkW * 0.13)) | 0}px Georgia, serif`;
+      // QWERTY label — large and dominant (≥18px), shrink only if key too narrow
+      ctx.font = 'bold 22px Georgia, serif';
+      const lw = ctx.measureText(wk.key).width;
+      if (lw > wkW - 6) {
+        ctx.font = `bold ${Math.max(18, (22 * (wkW - 6) / lw)) | 0}px Georgia, serif`;
+      }
+      ctx.fillStyle    = pressed ? '#3a2000' : '#2a2020';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(wk.key, kx + wkW / 2, pianoY + PIANO_H * 0.38);
+
+      // Note name — smaller, secondary below QWERTY label
+      ctx.font      = '11px Georgia, serif';
       ctx.fillStyle = pressed ? '#3a2000' : MUTED;
       ctx.fillText(wk.note, kx + wkW / 2, pianoY + PIANO_H * 0.70);
     }
@@ -187,19 +186,21 @@ export function renderHUD(ctx, state, W, H) {
     ctx.fillRect(kx, pianoY, bkW, bkH);
     ctx.strokeRect(kx, pianoY, bkW, bkH);
 
-    // QWERTY label (bold, sized to fit narrow key)
-    const kFs = Math.max(7, Math.min(13, bkW * 0.34)) | 0;
-    ctx.font         = `bold ${kFs}px Georgia, serif`;
-    ctx.fillStyle    = pressed ? '#3a2000' : '#f0ead6';
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(bk.key, kx + bkW / 2, pianoY + bkH * (showLabels ? 0.25 : 0.38));
-
+    // QWERTY + note labels — both hidden when showNoteLabels is off
     if (showLabels) {
-      const nFs = Math.max(6, Math.min(9, bkW * 0.20)) | 0;
+      // QWERTY label — min 14px for readability on narrow black keys
+      const kFs = Math.max(14, Math.min(18, bkW * 0.45)) | 0;
+      ctx.font         = `bold ${kFs}px Georgia, serif`;
+      ctx.fillStyle    = pressed ? '#3a2000' : '#f0ead6';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(bk.key, kx + bkW / 2, pianoY + bkH * 0.30);
+
+      // Note name — smaller secondary below QWERTY label
+      const nFs = Math.max(8, Math.min(10, bkW * 0.22)) | 0;
       ctx.font      = `${nFs}px Georgia, serif`;
       ctx.fillStyle = pressed ? '#3a2000' : MUTED;
-      ctx.fillText(bk.note, kx + bkW / 2, pianoY + bkH * 0.65);
+      ctx.fillText(bk.note, kx + bkW / 2, pianoY + bkH * 0.70);
     }
   }
 

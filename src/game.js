@@ -62,10 +62,14 @@ function createInitialState() {
     // ── Tablature summon bar ───────────────────
     tablature: {
       queue:             [],    // [{note, key, status, statusTime}]
-      combo:             0,     // consecutive correct notes
-      activeIndex:       0,     // always 0 — leftmost slot
-      pendingSpawn:      null,  // 1|2|3|null — consumed by game loop
+      combo:             0,     // consecutive correct sequences
+      activeIndex:       0,     // 0/1/2 — which note the player must press next
+      pendingSpawn:      null,  // 1|null — consumed by game loop
       summonCooldownEnd: 0,     // performance.now() when cooldown expires (0 = none)
+      nextRefreshTime:   0,     // performance.now() for auto-refresh; 0 = none
+      blocked:           false, // true when resource check failed (drives red flash)
+      blockedTime:       0,     // performance.now() when blocked was set
+      sequenceDoneTime:  0,     // performance.now() when all 3 notes completed; 0 = not done
     },
 
     // ── Audio (written by audio subsystem + keyboard layer) ──
@@ -99,7 +103,7 @@ function createInitialState() {
     currentPrompt:   null,       // { chord, tab, difficulty } — set by PromptManager
 
     // ── Resources — earned via kills, spent on summons ──
-    resources:          0,       // start 0; no auto-tick; kills add 20/30/50
+    resources:          200,     // start 200; no auto-tick; kills add 20/30/50
     _lastKillMelodyMs:  0,       // throttle: ≤ 1 melody per 800 ms
     enemySpawnTimer:    8,       // seconds until next enemy spawn
     enemySpawnInterval: 8,       // current inter-spawn delay (reduces every 60 s of play)
@@ -141,6 +145,10 @@ function setScene(scene) {
   document.body.dataset.scene = scene;
   console.log(`[scene] → ${scene}`);
   if (scene === SCENE.TITLE) console.log('[scene] entered TITLE — wiring settings');
+  // Close settings panel whenever leaving TITLE (e.g. on game start)
+  if (scene !== SCENE.TITLE) {
+    settingsUI.closePanel();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
