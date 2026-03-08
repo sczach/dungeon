@@ -252,9 +252,10 @@ export function initPianoTouchInput(canvas, onNote) {
   function onClick(e) {
     const { x, y } = coordsFromMouse(e);
     const note = getKeyAtPoint(x, y, canvas.offsetWidth, canvas.offsetHeight);
+    console.log(`[mouse/click] px=${x.toFixed(1)} py=${y.toFixed(1)} → ${note ?? 'miss'}`);
     if (note) {
+      console.log('[mouse/click] hit note: ' + note);
       onNote(note);
-      console.log(`[touch/click] key ${note}`);
     }
   }
   function onTouchStart(e) {
@@ -262,11 +263,13 @@ export function initPianoTouchInput(canvas, onNote) {
     const t = e.touches[0];
     if (!t) return;
     const r    = canvas.getBoundingClientRect();
-    const note = getKeyAtPoint(t.clientX - r.left, t.clientY - r.top,
-                               canvas.offsetWidth, canvas.offsetHeight);
+    const px   = t.clientX - r.left;
+    const py   = t.clientY - r.top;
+    const note = getKeyAtPoint(px, py, canvas.offsetWidth, canvas.offsetHeight);
+    console.log(`[touch] px=${px.toFixed(1)} py=${py.toFixed(1)} → ${note ?? 'miss'}`);
     if (note) {
+      console.log('[mouse/click] hit note: ' + note);
       onNote(note);
-      console.log(`[touch] key ${note}`);
     }
   }
   canvas.addEventListener('click', onClick);
