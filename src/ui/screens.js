@@ -39,6 +39,7 @@ export function saveSettings(state) {
  * @param {function} [onStart] — called when the "Start Game" button is clicked
  */
 export function wireSettingsUI(state, onStart) {
+  console.log('[settings] wireSettingsUI called');
   if (document.getElementById('cw-settings-overlay')) return; // idempotent
 
   // ── Styles ───────────────────────────────────────────────────────────────
