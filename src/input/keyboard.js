@@ -125,7 +125,7 @@ export function playSuccessKill(notes) {
     const t = t0 + i * MELODY_STEP;
     osc.start(t);
     osc.stop(t + TONE_DURATION);
-    console.log(`[kill melody] note ${i}: ${note} @ +${(i * MELODY_STEP).toFixed(2)}s`);
+    console.log(`[kill melody] note ${note} start at ${t.toFixed(3)}s`);
   });
   // Disconnect reverb tail after all notes + tail decay
   const cleanupMs = (notes.length * MELODY_STEP + TONE_DURATION + 1.5) * 1000;

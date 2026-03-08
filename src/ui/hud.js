@@ -274,4 +274,5 @@ export function initPianoTouchInput(canvas, onNote) {
   }
   canvas.addEventListener('click', onClick);
   canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  console.log('[touch init] registered');
 }
