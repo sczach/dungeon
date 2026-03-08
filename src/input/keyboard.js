@@ -93,7 +93,11 @@ function playTone(note) {
 /**
  * Play a sequence of notes as a kill-success melody with simple delay reverb.
  * Uses DelayNode → feedback GainNode loop (no ConvolverNode, no external files).
- * Notes are staggered by MELODY_STEP seconds.
+ *
+ * Notes are sorted ascending by pitch and padded to ≥ 4 notes so the phrase
+ * always feels like a complete triumphant motif.  Each note uses a 20 ms
+ * attack ramp → brief sustain → smooth decay at eighth-note tempo (~165 bpm,
+ * 0.18 s per step).
  *
  * @param {string[]} notes — note names to replay in order
  */
@@ -101,17 +105,35 @@ export function playSuccessKill(notes) {
   if (!notes || notes.length === 0) return;
   const ctx = getCtx();
   if (!ctx) return;
-  // Build shared reverb: delay → feedbackGain ↩ delay → destination
+
+  // Sort ascending by pitch so melody always rises (triumphant feel)
+  const sorted = [...notes].sort((a, b) => (getNoteFreq(a) || 0) - (getNoteFreq(b) || 0));
+
+  // Pad to at least 4 notes by appending octave-up copies of the peak note
+  const phrase = [...sorted];
+  while (phrase.length < 4) {
+    const last = phrase[phrase.length - 1];
+    const m    = last.match(/^([A-G]#?)(\d+)$/);
+    phrase.push(m ? `${m[1]}${parseInt(m[2], 10) + 1}` : last);
+  }
+
+  // Eighth-note tempo at ~165 bpm: step = 0.18 s, note duration = 0.26 s
+  const NOTE_STEP = 0.18;
+  const NOTE_DUR  = 0.26;
+
+  // Shared reverb: delay → feedback → delay → destination
   const delay    = ctx.createDelay(1.0);
   const feedback = ctx.createGain();
-  delay.delayTime.value = REVERB_DELAY;
-  feedback.gain.value   = REVERB_FDBK;
+  delay.delayTime.value = 0.20;
+  feedback.gain.value   = 0.35;
   delay.connect(feedback);
   feedback.connect(delay);
   delay.connect(ctx.destination);
+
   const t0 = ctx.currentTime + 0.02;
-  console.log('[kill melody] enemy killed, notes: [' + notes.join(', ') + ']');
-  notes.forEach((note, i) => {
+  console.log(`[kill melody] phrase: [${phrase.join(', ')}] step=${NOTE_STEP}s`);
+
+  phrase.forEach((note, i) => {
     const freq = getNoteFreq(note);
     if (!freq) return;
     const osc  = ctx.createOscillator();
@@ -121,17 +143,20 @@ export function playSuccessKill(notes) {
     osc.connect(gain);
     gain.connect(delay);           // wet (reverb)
     gain.connect(ctx.destination); // dry
-    const t = t0 + i * MELODY_STEP;
-    // Smooth gain envelope: full amplitude at t, ramp to silence at t+TONE_DURATION
-    gain.gain.setValueAtTime(KILL_GAIN, t);
-    gain.gain.linearRampToValueAtTime(0, t + TONE_DURATION);
+
+    const t = t0 + i * NOTE_STEP;
+    // Musical envelope: 20 ms attack → sustain plateau → smooth decay
+    gain.gain.setValueAtTime(0,           t);
+    gain.gain.linearRampToValueAtTime(KILL_GAIN,          t + 0.020);
+    gain.gain.setValueAtTime(KILL_GAIN * 0.65,            t + 0.080);
+    gain.gain.linearRampToValueAtTime(0.001,              t + NOTE_DUR);
     osc.start(t);
-    osc.stop(t + TONE_DURATION + 0.05);   // tiny buffer after ramp end
-    console.log('[kill melody] note ' + i + ' at t+' + (0.02 + i * 0.15).toFixed(3) + 's');
+    osc.stop(t + NOTE_DUR + 0.05);
+    console.log(`[kill melody] note ${i}: ${note} (${freq.toFixed(1)} Hz) @ t+${(0.02 + i * NOTE_STEP).toFixed(3)}s`);
   });
-  console.log('[kill melody] total melody duration: ' + ((notes.length - 1) * 0.15 + 0.2).toFixed(2) + 's');
-  // Disconnect reverb tail after all notes + tail decay
-  const cleanupMs = (notes.length * MELODY_STEP + TONE_DURATION + 1.5) * 1000;
+
+  // Disconnect reverb tail after all notes + decay
+  const cleanupMs = (phrase.length * NOTE_STEP + NOTE_DUR + 1.5) * 1000;
   setTimeout(() => {
     try { delay.disconnect(); feedback.disconnect(); } catch (_) {}
   }, cleanupMs);

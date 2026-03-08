@@ -12,11 +12,12 @@ const LS_KEY = 'chordwars_settings';
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 const DEFAULTS = Object.freeze({
-  audioThreshold: 50,    // 0–100 → maps to state.audioThreshold
-  masterVolume:   80,    // 0–100 → maps to state.masterVolume
-  difficulty:     'medium',
-  showChordCues:  true,
-  showNoteLabels: true,
+  audioThreshold:  50,      // 0–100 → maps to state.audioThreshold
+  masterVolume:    80,      // 0–100 → maps to state.masterVolume
+  difficulty:      'medium',
+  showChordCues:   true,
+  showNoteLabels:  true,
+  cueDisplayStyle: 'note',  // 'note' | 'qwerty' | 'staff'
 });
 
 // ─── CSS (injected once) ─────────────────────────────────────────────────────
@@ -95,6 +96,22 @@ const PANEL_CSS = `
     color: #e8a030;
   }
   .cw-diff-btn:hover { border-color: #8a7060; }
+  .cw-cue-btn {
+    background: #1e1e2e;
+    border: 1px solid #4a4060;
+    color: #f0ead6;
+    font-family: Georgia, serif;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .cw-cue-btn.active {
+    background: #1a1a3a;
+    border-color: #5b8fff;
+    color: #5b8fff;
+  }
+  .cw-cue-btn:hover { border-color: #8a7060; }
   #cw-chord-cues-btn,
   #cw-note-labels-btn {
     background: #1e1e2e;
@@ -158,12 +175,15 @@ export class SettingsUI {
     } catch (_) { /* ignore corrupt data */ }
 
     const merged = { ...DEFAULTS, ...saved };
-    state.audioThreshold = Number(merged.audioThreshold) || DEFAULTS.audioThreshold;
-    state.masterVolume   = Number(merged.masterVolume)   || DEFAULTS.masterVolume;
-    state.difficulty     = merged.difficulty     || DEFAULTS.difficulty;
-    state.showChordCues  = merged.showChordCues  ?? DEFAULTS.showChordCues;
-    state.showNoteLabels = merged.showNoteLabels ?? DEFAULTS.showNoteLabels;
-    console.log('[settings] defaults applied: sensitivity=' + state.audioThreshold);
+    state.audioThreshold  = Number(merged.audioThreshold) || DEFAULTS.audioThreshold;
+    state.masterVolume    = Number(merged.masterVolume)   || DEFAULTS.masterVolume;
+    state.difficulty      = merged.difficulty      || DEFAULTS.difficulty;
+    state.showChordCues   = merged.showChordCues   ?? DEFAULTS.showChordCues;
+    state.showNoteLabels  = merged.showNoteLabels  ?? DEFAULTS.showNoteLabels;
+    state.cueDisplayStyle = merged.cueDisplayStyle || DEFAULTS.cueDisplayStyle;
+    console.log('[settings] loaded: sensitivity=' + state.audioThreshold
+      + ' noteLabels=' + state.showNoteLabels
+      + ' cueStyle=' + state.cueDisplayStyle);
   }
 
   /**
@@ -172,11 +192,12 @@ export class SettingsUI {
    */
   saveSettings(state) {
     const toSave = {
-      audioThreshold: state.audioThreshold,
-      masterVolume:   state.masterVolume,
-      difficulty:     state.difficulty,
-      showChordCues:  state.showChordCues,
-      showNoteLabels: state.showNoteLabels,
+      audioThreshold:  state.audioThreshold,
+      masterVolume:    state.masterVolume,
+      difficulty:      state.difficulty,
+      showChordCues:   state.showChordCues,
+      showNoteLabels:  state.showNoteLabels,
+      cueDisplayStyle: state.cueDisplayStyle || DEFAULTS.cueDisplayStyle,
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
     console.log('[settings] saved to localStorage');
@@ -231,6 +252,13 @@ export class SettingsUI {
       <div class="cw-row">
         <span class="cw-label">Piano Key Labels</span>
         <button id="cw-note-labels-btn">${state.showNoteLabels ? 'ON' : 'OFF'}</button>
+      </div>
+
+      <div class="cw-row">
+        <span class="cw-label">Enemy Cue Style</span>
+        <button class="cw-cue-btn" data-style="note">Note Names</button>
+        <button class="cw-cue-btn" data-style="qwerty">QWERTY Keys</button>
+        <button class="cw-cue-btn" data-style="staff">Staff</button>
       </div>
 
       <hr class="cw-sep">
@@ -289,7 +317,19 @@ export class SettingsUI {
       state.showNoteLabels = !state.showNoteLabels;
       this._refreshNoteLabels(panel, state.showNoteLabels);
       this.saveSettings(state);
+      console.log('[settings] showNoteLabels →', state.showNoteLabels);
     });
+
+    // Enemy cue display style buttons
+    panel.querySelectorAll('.cw-cue-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.cueDisplayStyle = btn.dataset.style;
+        this._refreshCueStyle(panel, state.cueDisplayStyle);
+        this.saveSettings(state);
+        console.log('[settings] cueDisplayStyle →', state.cueDisplayStyle);
+      });
+    });
+    this._refreshCueStyle(panel, state.cueDisplayStyle || DEFAULTS.cueDisplayStyle);
 
     // Start Game
     panel.querySelector('#cw-start-game-btn').addEventListener('click', () => {
@@ -340,5 +380,11 @@ export class SettingsUI {
     if (!btn) return;
     btn.textContent = showNoteLabels ? 'ON' : 'OFF';
     btn.classList.toggle('active', showNoteLabels);
+  }
+
+  _refreshCueStyle(panel, cueDisplayStyle) {
+    panel.querySelectorAll('.cw-cue-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.style === cueDisplayStyle);
+    });
   }
 }
