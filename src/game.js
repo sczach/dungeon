@@ -26,7 +26,9 @@ import {
 import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
 import { Unit }                  from './entities/unit.js';
 import { Base }                  from './systems/base.js';
-import { keyboardInput }         from './input/keyboard.js';
+import { keyboardInput, playSuccessKill } from './input/keyboard.js';
+import { initPianoTouchInput }            from './ui/hud.js';
+import { loadSettings, wireSettingsUI }   from './ui/screens.js';
 import { TablatureSystem }       from './systems/tablature.js';
 import { AttackSequenceSystem }  from './systems/attackSequence.js';
 
@@ -84,10 +86,17 @@ function createInitialState() {
     // ── Entities ──────────────────────────────
     units: [],               // Unit[] — both player and enemy units
 
-    // ── Resources (currency for spawning) ─────
-    resources:          100,
-    enemySpawnTimer:    8,   // seconds until next enemy spawn
-    enemySpawnInterval: 8,   // current inter-spawn delay (reduces every 60 s of play)
+    // ── Mode & settings ───────────────────────
+    inputMode:      'summon',    // 'summon' | 'attack' — toggled by Space
+    modeAnnounce:   0,           // performance.now() timestamp; 0 = none
+    showNoteLabels: false,       // overridden by loadSettings()
+    difficulty:     'medium',    // overridden by loadSettings()
+
+    // ── Resources — earned via kills, spent on summons ──
+    resources:          0,       // start 0; no auto-tick; kills add 20/30/50
+    _lastKillMelodyMs:  0,       // throttle: ≤ 1 melody per 800 ms
+    enemySpawnTimer:    8,       // seconds until next enemy spawn
+    enemySpawnInterval: 8,       // current inter-spawn delay (reduces every 60 s of play)
 
     // ── Wave announcement ─────────────────────
     waveAnnounce: 0,         // performance.now() timestamp, 0 = none
@@ -106,6 +115,7 @@ const ctx      = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'
 const renderer = new Renderer(canvas, ctx);
 const state    = createInitialState();
 
+loadSettings(state);   // override defaults from localStorage
 const tablatureSystem      = new TablatureSystem();
 const attackSequenceSystem = new AttackSequenceSystem();
 
@@ -197,10 +207,17 @@ function wireButtons() {
 function startGame() {
   const fresh = createInitialState();
 
-  // Preserve audio calibration (mic ready flag + noise floor) across restarts
+  // Preserve audio calibration
   Object.assign(fresh.audio, {
     ready:      state.audio.ready,
     noiseFloor: state.audio.noiseFloor,
+  });
+
+  // Preserve player settings across restarts
+  Object.assign(fresh, {
+    difficulty:     state.difficulty,
+    showNoteLabels: state.showNoteLabels,
+    inputMode:      'summon',   // always reset to summon on new game
   });
 
   // Preserve canvas dimensions — managed by onResize(), not game logic.
@@ -222,6 +239,11 @@ function startGame() {
 
   // Announce Wave 1
   state.waveAnnounce = performance.now();
+
+  // Apply difficulty to initial spawn timing
+  const DIFF_INTERVALS = { easy: 12, medium: 8, hard: 5 };
+  state.enemySpawnInterval = DIFF_INTERVALS[state.difficulty] ?? 8;
+  state.enemySpawnTimer    = state.enemySpawnInterval;
 
   keyboardInput.start(state, tablatureSystem, attackSequenceSystem);
   setScene(SCENE.PLAYING);
@@ -360,12 +382,10 @@ function update(dt) {
       // Audio pipeline (mic chord detection / audio analysis)
       updateAudio(state, dt);
 
-      // ── Subsystem updates ─────────────────────────────────────────────────
-      tablatureSystem.update(dt, state);
+      // ── Subsystem updates (tablature only active in summon mode) ─────────
+      if (state.inputMode === 'summon') tablatureSystem.update(dt, state);
       attackSequenceSystem.update(dt, state);
-
-      // ── Resources tick (+10/s, cap 200) ─────────────────────────────────
-      state.resources = Math.min(200, state.resources + 10 * dt);
+      // No resource auto-tick — resources earned from kills only
 
       // ── Wave progression (every 30 s of play time) ───────────────────────
       const targetWave = Math.min(10, 1 + Math.floor(state.time / 30));
@@ -388,9 +408,18 @@ function update(dt) {
         spawnEnemyUnit();
       }
 
-      // ── Tablature spawn (free — sequence is the cost) ────────────────────
+      // ── Tablature spawn — gated by resources ─────────────────────────────
       if (state.tablature.pendingSpawn !== null) {
-        spawnPlayerUnit(state.tablature.pendingSpawn, true);
+        const tier = state.tablature.pendingSpawn;
+        const SUMMON_COST = [0, 50, 75, 100];
+        const cost = SUMMON_COST[tier] ?? 50;
+        if (state.resources >= cost) {
+          state.resources -= cost;
+          spawnPlayerUnit(tier, true);
+          console.log(`[summon] T${tier} cost ${cost} res → ${Math.floor(state.resources)}`);
+        } else {
+          console.log(`[summon] blocked T${tier}: need ${cost}, have ${Math.floor(state.resources)}`);
+        }
         state.tablature.pendingSpawn = null;
       }
 
@@ -401,9 +430,19 @@ function update(dt) {
       for (let i = state.units.length - 1; i >= 0; i--) {
         const u = state.units[i];
         if (!u.alive) {
-          // Award points for killing an enemy unit
           if (u.team === 'enemy') {
-            state.score += u.tier * 100;   // 100/200/300 per tier
+            state.score += u.tier * 100;
+            // Resource earn: T1=20, T2=30, T3=50
+            const EARN = [0, 20, 30, 50];
+            state.resources = Math.min(200, state.resources + EARN[u.tier]);
+            console.log(`[kill] T${u.tier} +${EARN[u.tier]} res → ${Math.floor(state.resources)}`);
+            // Kill melody — throttled to ≤ 1 per 800 ms
+            const now = performance.now();
+            if (u.attackSeq && u.attackSeq.length > 0 &&
+                now - state._lastKillMelodyMs > 800) {
+              state._lastKillMelodyMs = now;
+              try { playSuccessKill(u.attackSeq); } catch (_) {}
+            }
           }
           state.units.splice(i, 1);
           continue;
@@ -437,6 +476,8 @@ document.addEventListener('visibilitychange', () => {
 
 setScene(SCENE.TITLE);
 wireButtons();
+wireSettingsUI(state);
+initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note));
 
 requestAnimationFrame((ts) => {
   lastTimestamp = ts;
