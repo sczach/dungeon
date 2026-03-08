@@ -171,12 +171,14 @@ export class Renderer {
   // ─────────────────────────────────────────
 
   _drawPlaying(state, W, H) {
-    this._drawTablature(state, W, H);       // top of screen — drawn first (behind nothing)
-    this._drawChordCue(state, W, H);        // chord name + tab below tablature bar
+    // Map must come first — it fills the entire canvas with the grass background.
+    // All UI overlays (tablature, cues, announcements) must come AFTER.
     this._drawMap(W, H);
     this._drawBases(state, W, H);
     this._drawUnits(state);
     this._drawEnemySequences(state, W, H);
+    this._drawTablature(state, W, H);       // top-of-screen summon prompt (above map)
+    this._drawChordCue(state, W, H);        // chord name + tab (above map)
     this._drawWaveAnnouncement(state, W, H);
     this._drawModeAnnouncement(state, W, H);
     renderHUD(this.ctx, state, W, H);
@@ -481,8 +483,9 @@ export class Renderer {
    * QWERTY key label shown below each pill.
    */
   _drawEnemySequences(state, W, H) {   // eslint-disable-line no-unused-vars
-    const ctx = this.ctx;
-    const t   = state.time || 0;
+    const ctx   = this.ctx;
+    const t     = state.time || 0;
+    const style = state.cueDisplayStyle || 'note';  // 'note' | 'qwerty' | 'staff'
 
     for (const unit of state.units) {
       if (!unit.alive || unit.team !== 'enemy') continue;
@@ -492,80 +495,95 @@ export class Renderer {
       const r      = unit.radius ?? 12;
       const PILL_W = 30, PILL_H = 16, GAP = 3;
       const totalW = seqLen * (PILL_W + GAP) - GAP;
-      const baseX  = unit.x - totalW / 2;
       const baseY  = unit.y - r - 14 - PILL_H;
 
       ctx.save();
 
-      // ── 5-line staff above the pill row ──────────────────────────────────
-      const STAFF_W = Math.max(totalW, 56);
-      const STAFF_H = 20;
-      const STEP    = STAFF_H / 8;   // vertical distance per note step
-      const staffX  = unit.x - STAFF_W / 2;
-      const staffY  = baseY - STAFF_H - 5;
+      if (style === 'staff') {
+        // ── Staff-only mode: 5-line staff + filled note heads, no pill row ───
+        const STAFF_W = Math.max(totalW, 56);
+        const STAFF_H = 20;
+        const STEP    = STAFF_H / 8;
+        const staffX  = unit.x - STAFF_W / 2;
+        const staffY  = unit.y - r - 14 - STAFF_H;
 
-      ctx.strokeStyle = 'rgba(200,185,155,0.45)';
-      ctx.lineWidth   = 0.5;
-      for (let l = 0; l < 5; l++) {
-        const ly = staffY + STAFF_H - l * STEP * 2;
-        ctx.beginPath();
-        ctx.moveTo(staffX, ly);
-        ctx.lineTo(staffX + STAFF_W, ly);
-        ctx.stroke();
-      }
-
-      // Note heads on staff
-      const headStep = STAFF_W / (seqLen + 1);
-      for (let i = 0; i < seqLen; i++) {
-        const note    = unit.attackSeq[i];
-        const pos     = NOTE_TO_STAFF_POS[note] ?? 3;   // default middle
-        const ny      = staffY + STAFF_H - pos * STEP;
-        const nx      = staffX + headStep * (i + 0.6);
-        const isDone  = i < unit.attackSeqProgress;
-        ctx.beginPath();
-        ctx.ellipse(nx, ny, 4.5, 3, -0.18, 0, Math.PI * 2);
-        ctx.fillStyle   = isDone ? '#44ff88' : i === unit.attackSeqProgress ? CLR.ACCENT : 'rgba(240,234,214,0.55)';
-        ctx.strokeStyle = 'rgba(30,20,10,0.7)';
+        ctx.strokeStyle = 'rgba(200,185,155,0.55)';
         ctx.lineWidth   = 0.5;
-        ctx.fill();
-        ctx.stroke();
-      }
+        for (let l = 0; l < 5; l++) {
+          const ly = staffY + STAFF_H - l * STEP * 2;
+          ctx.beginPath();
+          ctx.moveTo(staffX, ly);
+          ctx.lineTo(staffX + STAFF_W, ly);
+          ctx.stroke();
+        }
+        // Background behind staff for readability
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle   = '#0a0a0f';
+        ctx.fillRect(staffX - 2, staffY - 2, STAFF_W + 4, STAFF_H + 10);
+        ctx.globalAlpha = 1;
+        // Re-draw staff lines on top of background
+        ctx.strokeStyle = 'rgba(200,185,155,0.65)';
+        ctx.lineWidth   = 0.5;
+        for (let l = 0; l < 5; l++) {
+          const ly = staffY + STAFF_H - l * STEP * 2;
+          ctx.beginPath();
+          ctx.moveTo(staffX, ly);
+          ctx.lineTo(staffX + STAFF_W, ly);
+          ctx.stroke();
+        }
 
-      // ── Existing pill row ─────────────────────────────────────────────────
-      for (let i = 0; i < seqLen; i++) {
-        const note      = unit.attackSeq[i];
-        const isDone    = i < unit.attackSeqProgress;
-        const isCurrent = i === unit.attackSeqProgress;
+        const headStep = STAFF_W / (seqLen + 1);
+        for (let i = 0; i < seqLen; i++) {
+          const note      = unit.attackSeq[i];
+          const pos       = NOTE_TO_STAFF_POS[note] ?? 3;
+          const ny        = staffY + STAFF_H - pos * STEP;
+          const nx        = staffX + headStep * (i + 0.6);
+          const isDone    = i < unit.attackSeqProgress;
+          const isCurrent = i === unit.attackSeqProgress;
+          ctx.beginPath();
+          ctx.ellipse(nx, ny, 5, 3.5, -0.18, 0, Math.PI * 2);
+          ctx.fillStyle   = isDone ? '#44ff88' : isCurrent ? CLR.ACCENT : 'rgba(240,234,214,0.6)';
+          ctx.strokeStyle = 'rgba(30,20,10,0.8)';
+          ctx.lineWidth   = 0.5;
+          ctx.fill();
+          ctx.stroke();
+        }
+      } else {
+        // ── Pill-row mode: 'note' shows note names, 'qwerty' shows key labels ─
+        const baseX = unit.x - totalW / 2;
 
-        const scale = isCurrent ? 1 + 0.1 * Math.sin(t * 6) : 1;
-        const pw = PILL_W * scale, ph = PILL_H * scale;
-        const px = baseX + i * (PILL_W + GAP) + (PILL_W - pw) / 2;
-        const py = baseY + (PILL_H - ph) / 2;
+        for (let i = 0; i < seqLen; i++) {
+          const note      = unit.attackSeq[i];
+          const isDone    = i < unit.attackSeqProgress;
+          const isCurrent = i === unit.attackSeqProgress;
 
-        ctx.fillStyle = isDone ? '#0d3a18' : isCurrent ? '#3a2800' : '#1e1e2e';
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 3);
-        else ctx.rect(px, py, pw, ph);
-        ctx.fill();
+          const scale = isCurrent ? 1 + 0.1 * Math.sin(t * 6) : 1;
+          const pw = PILL_W * scale, ph = PILL_H * scale;
+          const px = baseX + i * (PILL_W + GAP) + (PILL_W - pw) / 2;
+          const py = baseY + (PILL_H - ph) / 2;
 
-        ctx.strokeStyle = isDone ? '#44ff88' : isCurrent ? CLR.ACCENT : '#4a4a5a';
-        ctx.lineWidth   = isDone ? 1.5 : isCurrent ? 2 : 1;
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 3);
-        else ctx.rect(px, py, pw, ph);
-        ctx.stroke();
+          ctx.fillStyle = isDone ? '#0d3a18' : isCurrent ? '#3a2800' : '#1e1e2e';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 3);
+          else ctx.rect(px, py, pw, ph);
+          ctx.fill();
 
-        ctx.font         = `bold ${isCurrent ? 10 : 9}px Georgia, serif`;
-        ctx.fillStyle    = isDone ? '#44ff88' : isCurrent ? CLR.ACCENT : '#8a8a9a';
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(note, px + pw / 2, py + ph / 2);
+          ctx.strokeStyle = isDone ? '#44ff88' : isCurrent ? CLR.ACCENT : '#4a4a5a';
+          ctx.lineWidth   = isDone ? 1.5 : isCurrent ? 2 : 1;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 3);
+          else ctx.rect(px, py, pw, ph);
+          ctx.stroke();
 
-        const qKey = NOTE_TO_KEY[note];
-        if (qKey) {
-          ctx.font      = '8px Georgia, serif';
-          ctx.fillStyle = isCurrent ? CLR.ACCENT : '#5a5a6a';
-          ctx.fillText(qKey, baseX + i * (PILL_W + GAP) + PILL_W / 2, baseY + PILL_H + 6);
+          // Label: QWERTY key in qwerty mode, note name otherwise
+          const label = style === 'qwerty'
+            ? (NOTE_TO_KEY[note] || note)
+            : note;
+          ctx.font         = `bold ${isCurrent ? 10 : 9}px Georgia, serif`;
+          ctx.fillStyle    = isDone ? '#44ff88' : isCurrent ? CLR.ACCENT : '#8a8a9a';
+          ctx.textAlign    = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, px + pw / 2, py + ph / 2);
         }
       }
 

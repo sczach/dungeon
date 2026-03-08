@@ -31,8 +31,8 @@ const NOTE_POOL    = ['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3']; // locked to C3
 /** Sequence lengths by tier (index 0 unused). */
 const SEQ_LENGTHS  = [0, 2, 3, 5];
 
-/** Stun duration in seconds. */
-const STUN_DURATION = 3;
+/** Stun duration in seconds (kept short so T3 doesn't monopolize attention). */
+const STUN_DURATION = 2;
 
 export class AttackSequenceSystem {
   /**
@@ -77,32 +77,50 @@ export class AttackSequenceSystem {
       if (!u.alive || !u.stunned) continue;
       u.stunTimer -= dt;
       if (u.stunTimer <= 0) {
-        u.stunned           = false;
-        u.stunTimer         = 0;
-        u.attackSeqProgress = 0;   // reset so unit can be targeted again
+        u.stunned   = false;
+        u.stunTimer = 0;
+        // Assign a brand-new sequence so the unit is not immediately
+        // re-targeted with the same notes it just had.
+        const len = SEQ_LENGTHS[u.tier] ?? 2;
+        u.attackSeq = [];
+        for (let n = 0; n < len; n++) {
+          u.attackSeq.push(NOTE_POOL[Math.floor(Math.random() * NOTE_POOL.length)]);
+        }
+        u.attackSeqProgress = 0;
       }
     }
   }
 
   /**
    * Called on each note press — advance the best-matching enemy's sequence.
-   * If multiple enemies share the same next note, the one with the smallest x
-   * (closest to the player base) is prioritised.
+   *
+   * Priority: fewest remaining notes wins (kills/hurts faster), ties broken
+   * by proximity to the player base (smallest x).  This prevents a distant
+   * tier-3 enemy with a 5-note sequence from monopolising all player attacks
+   * while tier-1/2 enemies with shorter sequences walk through.
+   *
    * @param {string} note
    * @param {object} state
    */
   onNote(note, state) {
     const units = state.units;
-    let bestUnit = null;
-    let bestX    = Infinity;
+    let bestUnit  = null;
+    let bestScore = Infinity;
 
     for (let i = 0; i < units.length; i++) {
       const u = units[i];
       if (!u.alive || u.team !== 'enemy' || u.stunned) continue;
       if (!u.attackSeq || u.attackSeqProgress >= u.attackSeq.length) continue;
-      if (u.attackSeq[u.attackSeqProgress] === note && u.x < bestX) {
-        bestX    = u.x;
-        bestUnit = u;
+      if (u.attackSeq[u.attackSeqProgress] !== note) continue;
+
+      // Score = (remaining notes) * 10000 + x
+      // Lower remaining notes → lower score → preferred.
+      // Equal remaining → closer to base (smaller x) → preferred.
+      const remaining = u.attackSeq.length - u.attackSeqProgress;
+      const score     = remaining * 10000 + u.x;
+      if (score < bestScore) {
+        bestScore = score;
+        bestUnit  = u;
       }
     }
 

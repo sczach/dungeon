@@ -88,13 +88,14 @@ function createInitialState() {
     units: [],               // Unit[] — both player and enemy units
 
     // ── Mode & settings ───────────────────────
-    inputMode:      'summon',    // 'summon' | 'attack' — toggled by Space
-    modeAnnounce:   0,           // performance.now() timestamp; 0 = none
-    showNoteLabels:  false,       // overridden by loadSettings()
+    inputMode:       'summon',   // 'summon' | 'attack' — toggled by Space
+    modeAnnounce:    0,          // performance.now() timestamp; 0 = none
+    showNoteLabels:  false,      // overridden by loadSettings()
     difficulty:      'medium',   // overridden by loadSettings()
     audioThreshold:  50,         // 0–100 mic sensitivity; overridden by loadSettings()
     masterVolume:    80,         // 0–100 output gain; overridden by loadSettings()
     showChordCues:   true,       // show chord name + tab at top; overridden by loadSettings()
+    cueDisplayStyle: 'note',     // 'note'|'qwerty'|'staff'; overridden by loadSettings()
     currentPrompt:   null,       // { chord, tab, difficulty } — set by PromptManager
 
     // ── Resources — earned via kills, spent on summons ──
@@ -224,12 +225,13 @@ function startGame() {
 
   // Preserve player settings across restarts
   Object.assign(fresh, {
-    difficulty:     state.difficulty,
-    showNoteLabels: state.showNoteLabels,
-    audioThreshold: state.audioThreshold,
-    masterVolume:   state.masterVolume,
-    showChordCues:  state.showChordCues,
-    inputMode:      'summon',   // always reset to summon on new game
+    difficulty:      state.difficulty,
+    showNoteLabels:  state.showNoteLabels,
+    audioThreshold:  state.audioThreshold,
+    masterVolume:    state.masterVolume,
+    showChordCues:   state.showChordCues,
+    cueDisplayStyle: state.cueDisplayStyle,
+    inputMode:       'summon',   // always reset to summon on new game
   });
 
   // Preserve canvas dimensions — managed by onResize(), not game logic.
