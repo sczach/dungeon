@@ -37,7 +37,8 @@
  * the constructor; no objects are created per frame.
  */
 
-import { Unit } from '../entities/unit.js';
+import { Unit }                      from '../entities/unit.js';
+import { CHORD_DATA, CHORD_FALLBACK } from '../data/chords.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -128,10 +129,9 @@ export class PromptManager {
    * @param {object} state — canonical game state
    */
   update(dt, state) {
-    // Ensure prompt is visible and initialised on the first frame
-    state.prompt.active = true;
-    if (state.prompt.chord === null) {
-      state.prompt.chord = PROMPT_CYCLE[this._promptIndex];
+    // Initialise currentPrompt on the first frame of a new game
+    if (state.currentPrompt === null) {
+      this._setPrompt(state, PROMPT_CYCLE[this._promptIndex]);
     }
 
     const chord      = state.audio.detectedChord;
@@ -166,7 +166,22 @@ export class PromptManager {
     this._lastFamily = family;
 
     // ── Advance prompt cycle ─────────────────────────────────────────────────
-    this._promptIndex  = (this._promptIndex + 1) % PROMPT_CYCLE.length;
-    state.prompt.chord = PROMPT_CYCLE[this._promptIndex];
+    this._promptIndex = (this._promptIndex + 1) % PROMPT_CYCLE.length;
+    this._setPrompt(state, PROMPT_CYCLE[this._promptIndex]);
+  }
+
+  // ── Private helper ─────────────────────────────────────────────────────────
+
+  /**
+   * Write state.currentPrompt with chord name, tab notation, and difficulty.
+   * @param {object} state
+   * @param {string} chord
+   */
+  _setPrompt(state, chord) {
+    const data = CHORD_DATA[chord] ?? CHORD_FALLBACK;
+    state.currentPrompt = { chord, tab: data.tab, difficulty: data.difficulty };
+    console.log('[chord-cue] prompt changed: ' + chord);
+    console.log('[chord-cue] rendering at top-center with tab: ' + data.tab);
+    console.log('[chord-cue] difficulty: ' + data.difficulty);
   }
 }

@@ -27,9 +27,9 @@ const KEY_TO_NOTE = {
 
 // ─── Tone constants ──────────────────────────────────────────────────────────
 const PRESS_CLEAR_MS = 150;
-const TONE_DURATION  = 0.5;    // seconds
+const TONE_DURATION  = 0.20;   // seconds — 200 ms; no overlap with 150 ms stagger
 const TONE_GAIN      = 0.3;
-const KILL_GAIN      = 0.6;
+const KILL_GAIN      = 0.35;   // lowered from 0.6 to prevent clipping on multi-kill
 const REVERB_DELAY   = 0.2;    // DelayNode delayTime
 const REVERB_FDBK    = 0.4;    // feedback gain
 const MELODY_STEP    = 0.15;   // seconds between kill-melody notes
@@ -110,7 +110,7 @@ export function playSuccessKill(notes) {
   feedback.connect(delay);
   delay.connect(ctx.destination);
   const t0 = ctx.currentTime + 0.02;
-  console.log(`[kill melody] staggering ${notes.length} notes @ ${MELODY_STEP}s apart: ${notes.join(' ')}`);
+  console.log('[kill melody] enemy killed, notes: [' + notes.join(', ') + ']');
   notes.forEach((note, i) => {
     const freq = getNoteFreq(note);
     if (!freq) return;
@@ -118,15 +118,18 @@ export function playSuccessKill(notes) {
     const gain = ctx.createGain();
     osc.type            = 'sine';
     osc.frequency.value = freq;
-    gain.gain.value     = KILL_GAIN;
     osc.connect(gain);
     gain.connect(delay);           // wet (reverb)
     gain.connect(ctx.destination); // dry
     const t = t0 + i * MELODY_STEP;
+    // Smooth gain envelope: full amplitude at t, ramp to silence at t+TONE_DURATION
+    gain.gain.setValueAtTime(KILL_GAIN, t);
+    gain.gain.linearRampToValueAtTime(0, t + TONE_DURATION);
     osc.start(t);
-    osc.stop(t + TONE_DURATION);
-    console.log('[kill melody] scheduling ' + note + ' at t+' + (0.02 + i * 0.15).toFixed(3) + 's');
+    osc.stop(t + TONE_DURATION + 0.05);   // tiny buffer after ramp end
+    console.log('[kill melody] note ' + i + ' at t+' + (0.02 + i * 0.15).toFixed(3) + 's');
   });
+  console.log('[kill melody] total melody duration: ' + ((notes.length - 1) * 0.15 + 0.2).toFixed(2) + 's');
   // Disconnect reverb tail after all notes + tail decay
   const cleanupMs = (notes.length * MELODY_STEP + TONE_DURATION + 1.5) * 1000;
   setTimeout(() => {
