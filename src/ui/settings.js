@@ -16,7 +16,7 @@ const DEFAULTS = Object.freeze({
   masterVolume:   80,    // 0–100 → maps to state.masterVolume
   difficulty:     'medium',
   showChordCues:  true,
-  showNoteLabels: false,
+  showNoteLabels: true,
 });
 
 // ─── CSS (injected once) ─────────────────────────────────────────────────────
@@ -83,7 +83,8 @@ const PANEL_CSS = `
     color: #e8a030;
   }
   .cw-diff-btn:hover { border-color: #8a7060; }
-  #cw-chord-cues-btn {
+  #cw-chord-cues-btn,
+  #cw-note-labels-btn {
     background: #1e1e2e;
     border: 1px solid #4a4060;
     color: #f0ead6;
@@ -93,7 +94,8 @@ const PANEL_CSS = `
     border-radius: 4px;
     cursor: pointer;
   }
-  #cw-chord-cues-btn.active {
+  #cw-chord-cues-btn.active,
+  #cw-note-labels-btn.active {
     background: #1a3a1a;
     border-color: #44ff88;
     color: #44ff88;
@@ -213,6 +215,11 @@ export class SettingsUI {
         <button id="cw-chord-cues-btn">${state.showChordCues ? 'ON' : 'OFF'}</button>
       </div>
 
+      <div class="cw-row">
+        <span class="cw-label">Piano Key Labels</span>
+        <button id="cw-note-labels-btn">${state.showNoteLabels ? 'ON' : 'OFF'}</button>
+      </div>
+
       <hr class="cw-sep">
 
       <div class="cw-row" style="justify-content:center;">
@@ -226,6 +233,8 @@ export class SettingsUI {
     this._refreshDiff(panel, state.difficulty);
     // Reflect initial chord cues state
     this._refreshChordCues(panel, state.showChordCues);
+    // Reflect initial note labels state
+    this._refreshNoteLabels(panel, state.showNoteLabels);
 
     // ── Event listeners ──────────────────────────────────────────────────────
 
@@ -262,6 +271,13 @@ export class SettingsUI {
       this.saveSettings(state);
     });
 
+    // Piano key labels toggle
+    panel.querySelector('#cw-note-labels-btn').addEventListener('click', () => {
+      state.showNoteLabels = !state.showNoteLabels;
+      this._refreshNoteLabels(panel, state.showNoteLabels);
+      this.saveSettings(state);
+    });
+
     // Start Game
     panel.querySelector('#cw-start-game-btn').addEventListener('click', () => {
       if (typeof onStart === 'function') onStart();
@@ -293,5 +309,12 @@ export class SettingsUI {
     if (!btn) return;
     btn.textContent = showChordCues ? 'ON' : 'OFF';
     btn.classList.toggle('active', showChordCues);
+  }
+
+  _refreshNoteLabels(panel, showNoteLabels) {
+    const btn = panel.querySelector('#cw-note-labels-btn');
+    if (!btn) return;
+    btn.textContent = showNoteLabels ? 'ON' : 'OFF';
+    btn.classList.toggle('active', showNoteLabels);
   }
 }
