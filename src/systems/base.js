@@ -14,17 +14,21 @@ export class Base {
    * @param {number} y — logical pixel y of base centre
    */
   constructor(team, x, y) {
-    this.team  = team;
-    this.x     = x;
-    this.y     = y;
-    this.hp    = 100;
-    this.maxHp = 100;
+    this.team       = team;
+    this.x          = x;
+    this.y          = y;
+    this.hp         = 100;
+    this.maxHp      = 100;
+    /** Set to false during early phases so the enemy base cannot be damaged. */
+    this.vulnerable = true;
   }
 
   /**
    * @param {number} amount — positive damage amount
+   * Silently ignored when this.vulnerable is false (enemy base during intro/development phases).
    */
   takeDamage(amount) {
+    if (!this.vulnerable) return;
     this.hp = Math.max(0, this.hp - amount);
   }
 

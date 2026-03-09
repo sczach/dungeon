@@ -41,6 +41,20 @@ import { LEVELS, LEVELS_BY_ID, computeStars } from './data/levels.js';
 export { SCENE };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Phase system
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Default phase schedule used when a level config omits the phases array.
+ * Introduction (60 s) → Development (90 s) → Climax (open-ended).
+ */
+const DEFAULT_PHASES = Object.freeze([
+  Object.freeze({ label: 'Introduction', duration: 60  }),
+  Object.freeze({ label: 'Development',  duration: 90  }),
+  Object.freeze({ label: 'Climax',       duration: null }),
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Canonical game state
 // All subsystems receive a reference — they never hold state themselves.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,6 +112,13 @@ function createInitialState() {
     lightningBolts: [],      // {x1,y1,x2,y2,startTime,duration,segments}[] — active bolt animations
     attackMisses:   0,       // notes pressed in ATTACK mode with no enemy match (accuracy tracking)
     projectiles:    [],      // {x,y,tx,ty,startTime,travelTime,team}[] — ranged unit shot visuals
+
+    // ── Melody phase system ───────────────────
+    currentPhase:         0,           // 0=Introduction, 1=Development, 2=Climax
+    phaseTime:            0,           // elapsed seconds in current phase
+    phaseLabel:           'Introduction',
+    phaseAnnounce:        0,           // performance.now() when phase last changed (for overlay)
+    phrasePlaysThisPhase: 0,           // tablature sequences completed since phase start
 
     // ── Mode & settings ───────────────────────
     inputMode:       'summon',   // 'summon' | 'attack' — toggled by Space
@@ -378,6 +399,17 @@ function startGame(levelConfig) {
 
   // Announce Wave 1
   state.waveAnnounce = performance.now();
+
+  // Set initial phase label and enemy base vulnerability
+  {
+    const phases = level.phases ?? DEFAULT_PHASES;
+    state.phaseLabel = phases[0]?.label ?? 'Introduction';
+    // Enemy base is invulnerable until Climax (final phase)
+    if (state.enemyBase) {
+      state.enemyBase.vulnerable = (phases.length <= 1);
+    }
+    state.phaseAnnounce = performance.now();
+  }
 
   keyboardInput.start(state, tablatureSystem, attackSequenceSystem);
   setScene(SCENE.PLAYING);
@@ -740,28 +772,62 @@ function update(dt) {
         }
       }
 
+      // ── Phase progression ─────────────────────────────────────────────────
+      {
+        const phases    = state.currentLevel?.phases ?? DEFAULT_PHASES;
+        const curPhaseIdx = state.currentPhase;
+        state.phaseTime += dt;
+        if (curPhaseIdx < phases.length - 1) {
+          const phaseDuration = phases[curPhaseIdx].duration;
+          if (phaseDuration !== null && state.phaseTime >= phaseDuration) {
+            // Advance to the next phase
+            const nextIdx           = curPhaseIdx + 1;
+            state.currentPhase      = nextIdx;
+            state.phaseTime         = 0;
+            state.phrasePlaysThisPhase = 0;
+            state.phaseLabel        = phases[nextIdx].label ?? `Phase ${nextIdx + 1}`;
+            state.phaseAnnounce     = performance.now();
+            // Enemy base becomes vulnerable only in the final (Climax) phase
+            if (state.enemyBase) {
+              state.enemyBase.vulnerable = (nextIdx >= phases.length - 1);
+            }
+            console.log(`[phase] → ${state.phaseLabel} (phase ${nextIdx + 1}/${phases.length})`);
+          }
+        }
+      }
+
       // ── Win / lose ────────────────────────────────────────────────────────
       if (state.playerBase.isDestroyed()) {
         setScene(SCENE.DEFEAT);
         break;
       }
-      if (state.enemyBase.isDestroyed()) {
-        // Compute accuracy from tablature hit/miss counters
-        const tab   = state.tablature;
-        const total = (tab.totalHits || 0) + (tab.totalMisses || 0);
-        state.noteAccuracy = total > 0
-          ? Math.round((tab.totalHits || 0) / total * 100)
-          : 100;  // no notes played (practice skip) → perfect score
 
-        // Compute and persist star result
-        if (state.currentLevel) {
-          state.starsEarned = computeStars(state.noteAccuracy, state.currentLevel);
-          progression = awardStars(state.currentLevel.id, state.starsEarned, progression);
-          saveProgress(progression);
-          console.log(`[victory] ${state.starsEarned}★ accuracy=${state.noteAccuracy}% on ${state.currentLevel.id}`);
+      // Victory only available in the final phase (Climax)
+      if (state.currentPhase >= ((state.currentLevel?.phases ?? DEFAULT_PHASES).length - 1)) {
+        let wonByBase = state.enemyBase.isDestroyed();
+
+        // Performance win: ≥2 complete sequences in Climax with ≥70 % accuracy
+        const tab         = state.tablature;
+        const totalNotes  = (tab.totalHits || 0) + (tab.totalMisses || 0);
+        const accuracy    = totalNotes > 0 ? (tab.totalHits || 0) / totalNotes : 1;
+        const wonByPhrase = state.phrasePlaysThisPhase >= 2 && accuracy >= 0.70;
+
+        if (wonByBase || wonByPhrase) {
+          // Compute accuracy and persist result
+          state.noteAccuracy = totalNotes > 0
+            ? Math.round((tab.totalHits || 0) / totalNotes * 100)
+            : 100;
+
+          if (state.currentLevel) {
+            state.starsEarned = computeStars(state.noteAccuracy, state.currentLevel);
+            progression = awardStars(state.currentLevel.id, state.starsEarned, progression);
+            saveProgress(progression);
+            const why = wonByBase ? 'base destroyed' : 'phrase performance';
+            console.log(`[victory] ${state.starsEarned}★ acc=${state.noteAccuracy}% via ${why}`);
+          }
+          setScene(SCENE.VICTORY);
+          break;
         }
-        setScene(SCENE.VICTORY);
-        break;
       }
       break;
     }

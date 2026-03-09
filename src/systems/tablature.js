@@ -174,6 +174,8 @@ export class TablatureSystem {
       if (tab.activeIndex >= tab.queue.length) {
         // All 3 notes completed — try to trigger a summon
         tab.combo++;
+        // Track phrase completions per phase (for performance-win condition)
+        state.phrasePlaysThisPhase = (state.phrasePlaysThisPhase || 0) + 1;
         const cooldownActive = now < (tab.summonCooldownEnd || 0);
 
         let playerCount = 0;

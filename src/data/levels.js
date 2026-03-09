@@ -16,18 +16,22 @@
  */
 
 /**
+ * @typedef {{label:string, duration:number|null}} PhaseConfig
+ * duration=null means "run until win condition triggers".
+ *
  * @typedef {Object} LevelConfig
- * @property {string}   id              — unique identifier, used as localStorage key
- * @property {string}   name            — display name on level select
- * @property {string}   subtitle        — one-line flavour description
- * @property {string}   icon            — emoji used on the level card
- * @property {number}   maxWaves        — how many waves before VICTORY is possible
- * @property {number}   difficultyMod   — multiplier on enemy HP and tier-3 probability
- * @property {number}   spawnMod        — multiplier on enemy spawn interval (>1 = slower = easier)
- * @property {number}   startResources  — initial resource amount (overrides game.js default 200)
- * @property {number}   maxEnemyCap     — max simultaneous enemy units on screen
- * @property {string}   unlockRequires  — id of level that must be beaten first, or null
- * @property {number[]} starThresholds  — note accuracy % for [1★, 2★, 3★]
+ * @property {string}        id              — unique identifier, used as localStorage key
+ * @property {string}        name            — display name on level select
+ * @property {string}        subtitle        — one-line flavour description
+ * @property {string}        icon            — emoji used on the level card
+ * @property {number}        maxWaves        — how many waves before VICTORY is possible
+ * @property {number}        difficultyMod   — multiplier on enemy HP and tier-3 probability
+ * @property {number}        spawnMod        — multiplier on enemy spawn interval (>1 = slower = easier)
+ * @property {number}        startResources  — initial resource amount (overrides game.js default 200)
+ * @property {number}        maxEnemyCap     — max simultaneous enemy units on screen
+ * @property {string}        unlockRequires  — id of level that must be beaten first, or null
+ * @property {number[]}      starThresholds  — note accuracy % for [1★, 2★, 3★]
+ * @property {PhaseConfig[]} phases          — ordered phase definitions (last phase has duration=null)
  */
 
 /** @type {ReadonlyArray<Readonly<LevelConfig>>} */
@@ -44,6 +48,11 @@ export const LEVELS = Object.freeze([
     maxEnemyCap:    5,
     unlockRequires: null,   // always available
     starThresholds: [0, 65, 85],  // 1★: any win; 2★: ≥65% accuracy; 3★: ≥85%
+    phases: Object.freeze([
+      Object.freeze({ label: 'Introduction', duration: 60  }),  // 60 s — enemy base invulnerable
+      Object.freeze({ label: 'Development',  duration: 90  }),  // 90 s — enemy base invulnerable
+      Object.freeze({ label: 'Climax',       duration: null }), // run until win
+    ]),
   }),
   Object.freeze({
     id:             'crossing',
@@ -57,6 +66,11 @@ export const LEVELS = Object.freeze([
     maxEnemyCap:    6,
     unlockRequires: 'campfire',
     starThresholds: [0, 70, 90],  // 1★: any win; 2★: ≥70% accuracy; 3★: ≥90%
+    phases: Object.freeze([
+      Object.freeze({ label: 'Introduction', duration: 80  }),
+      Object.freeze({ label: 'Development',  duration: 110 }),
+      Object.freeze({ label: 'Climax',       duration: null }),
+    ]),
   }),
   Object.freeze({
     id:             'siege',
@@ -70,6 +84,11 @@ export const LEVELS = Object.freeze([
     maxEnemyCap:    8,
     unlockRequires: 'crossing',
     starThresholds: [0, 70, 90],  // same as Crossing — accuracy standard doesn't drop
+    phases: Object.freeze([
+      Object.freeze({ label: 'Introduction', duration: 70  }),
+      Object.freeze({ label: 'Development',  duration: 100 }),
+      Object.freeze({ label: 'Climax',       duration: null }),
+    ]),
   }),
 ]);
 

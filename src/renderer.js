@@ -197,6 +197,8 @@ export class Renderer {
     this._drawEnemySequences(state, W, H);
     this._drawTablature(state, W, H);       // top-of-screen summon prompt (above map)
     this._drawWaveAnnouncement(state, W, H);
+    this._drawPhaseAnnouncement(state, W, H);
+    this._drawPhaseLabel(state, W, H);
     this._drawModeAnnouncement(state, W, H);
     renderHUD(this.ctx, state, W, H);
   }
@@ -983,6 +985,72 @@ export class Renderer {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, W / 2, H * 0.62);
+    ctx.restore();
+  }
+
+  /**
+   * Brief centred overlay shown for 2 s when a phase transition occurs.
+   * Shows the new phase name in amber above a description sub-line.
+   */
+  _drawPhaseAnnouncement(state, W, H) {
+    if (!state.phaseAnnounce || !state.phaseLabel) return;
+    const elapsed = performance.now() - state.phaseAnnounce;
+    const FADE_IN  = 300;
+    const HOLD_END = 1800;
+    const TOTAL    = 2400;
+    if (elapsed >= TOTAL) return;
+
+    let alpha;
+    if (elapsed < FADE_IN) {
+      alpha = elapsed / FADE_IN;
+    } else if (elapsed < HOLD_END) {
+      alpha = 1;
+    } else {
+      alpha = 1 - (elapsed - HOLD_END) / (TOTAL - HOLD_END);
+    }
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha  = Math.max(0, alpha);
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Phase name — amber, 52px, lower half of screen to avoid wave overlap
+    ctx.font      = 'bold 52px Georgia, serif';
+    ctx.fillStyle = CLR.ACCENT;
+    ctx.fillText(`— ${state.phaseLabel} —`, W / 2, H * 0.62);
+
+    // Subline
+    ctx.font      = '20px Georgia, serif';
+    ctx.fillStyle = CLR.TEXT;
+    const isFinal = state.phaseLabel === 'Climax';
+    ctx.fillText(
+      isFinal ? 'Destroy the enemy base!' : 'Prepare your forces',
+      W / 2, H * 0.62 + 40
+    );
+    ctx.restore();
+  }
+
+  /**
+   * Small persistent phase label in the top-right corner during play.
+   * Shows "▸ Climax" etc. so the player always knows the current phase.
+   */
+  _drawPhaseLabel(state, W, H) {   // eslint-disable-line no-unused-vars
+    if (!state.phaseLabel) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'top';
+    ctx.font         = '14px Georgia, serif';
+    ctx.fillStyle    = 'rgba(240,234,214,0.7)';
+    ctx.fillText(`▸ ${state.phaseLabel}`, W - 12, 12);
+
+    // If enemy base is invulnerable, show a small warning
+    if (state.enemyBase && !state.enemyBase.vulnerable) {
+      ctx.font      = '12px Georgia, serif';
+      ctx.fillStyle = 'rgba(255,180,60,0.8)';
+      ctx.fillText('Base invulnerable', W - 12, 30);
+    }
     ctx.restore();
   }
 
