@@ -21,14 +21,18 @@
  * renderer.js reads it to dispatch per-scene draw calls;
  * style.css uses [data-scene] attribute selectors to show/hide HTML overlays.
  *
- * @type {Readonly<{TITLE:string, CALIBRATION:string, PLAYING:string, VICTORY:string, DEFEAT:string}>}
+ * Scene flow:
+ *   TITLE → LEVEL_SELECT → CALIBRATION → PLAYING → VICTORY | DEFEAT → LEVEL_SELECT
+ *
+ * @type {Readonly<{TITLE:string, LEVEL_SELECT:string, CALIBRATION:string, PLAYING:string, VICTORY:string, DEFEAT:string}>}
  */
 export const SCENE = Object.freeze({
-  TITLE:       'TITLE',
-  CALIBRATION: 'CALIBRATION',
-  PLAYING:     'PLAYING',
-  VICTORY:     'VICTORY',
-  DEFEAT:      'DEFEAT',
+  TITLE:        'TITLE',
+  LEVEL_SELECT: 'LEVEL_SELECT',
+  CALIBRATION:  'CALIBRATION',
+  PLAYING:      'PLAYING',
+  VICTORY:      'VICTORY',
+  DEFEAT:       'DEFEAT',
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

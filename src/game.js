@@ -29,9 +29,12 @@ import { Base }                  from './systems/base.js';
 import { keyboardInput, playSuccessKill } from './input/keyboard.js';
 import { initPianoTouchInput }            from './ui/hud.js';
 import { SettingsUI }                     from './ui/settings.js';
+import { LevelSelectUI }                  from './ui/levelselect.js';
 import { TablatureSystem }       from './systems/tablature.js';
 import { AttackSequenceSystem }  from './systems/attackSequence.js';
 import { PromptManager }         from './systems/prompts.js';
+import { loadProgress, saveProgress, awardStars, applySkills } from './systems/progression.js';
+import { LEVELS_BY_ID, computeStars } from './data/levels.js';
 
 // Re-export SCENE for callers that import from game.js
 export { SCENE };
@@ -125,6 +128,19 @@ function createInitialState() {
 
     // ── Canvas dimensions (managed by onResize) ─
     canvas: { width: 0, height: 0, dpr: 1 },
+
+    // ── Level & progression ───────────────────
+    currentLevel:   null,    // LevelConfig — set when player picks a level
+    starsEarned:    0,       // 0–3, computed at VICTORY
+
+    // ── Skill buff fields (reset + applied by applySkills()) ─────────────────
+    skillSummonCooldownBonus:  0,
+    skillBaseHpBonus:          0,
+    skillMaxUnitsBonus:        0,
+    skillUnitHpMult:           1.0,
+    skillUnitDamageMult:       1.0,
+    skillComboDoubleMilestone: false,
+    skillSpawnIntervalBonus:   0,
   };
 }
 
@@ -137,7 +153,11 @@ const ctx      = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'
 const renderer = new Renderer(canvas, ctx);
 const state    = createInitialState();
 
+// Progression is loaded once; mutations are written back to localStorage via saveProgress()
+let progression = loadProgress();
+
 const settingsUI           = new SettingsUI();
+const levelSelectUI        = new LevelSelectUI();
 const promptManager        = new PromptManager();
 settingsUI.loadSettings(state);   // override defaults from localStorage
 const tablatureSystem      = new TablatureSystem();
@@ -156,10 +176,35 @@ function setScene(scene) {
   state.scene = scene;
   document.body.dataset.scene = scene;
   console.log(`[scene] → ${scene}`);
-  if (scene === SCENE.TITLE) console.log('[scene] entered TITLE — wiring settings');
-  // Close settings panel whenever leaving TITLE (e.g. on game start)
+  // Close settings panel whenever leaving TITLE
   if (scene !== SCENE.TITLE) {
     settingsUI.closePanel();
+  }
+  // Refresh level select display with latest progression on each visit
+  if (scene === SCENE.LEVEL_SELECT) {
+    levelSelectUI.refresh(progression);
+  }
+
+  // Populate victory / defeat overlays
+  if (scene === SCENE.VICTORY) {
+    const stars  = state.starsEarned ?? 0;
+    const starsEl = document.getElementById('victory-stars');
+    if (starsEl) {
+      let html = '';
+      for (let i = 0; i < 3; i++) {
+        html += i < stars
+          ? '<span class="star">★</span>'
+          : '<span class="star-empty">★</span>';
+      }
+      starsEl.innerHTML = html;
+    }
+    const scoreEl = document.getElementById('victory-score');
+    if (scoreEl) scoreEl.textContent = `Score: ${state.score}`;
+  }
+
+  if (scene === SCENE.DEFEAT) {
+    const scoreEl = document.getElementById('defeat-score');
+    if (scoreEl) scoreEl.textContent = `Score: ${state.score}`;
   }
 }
 
@@ -206,35 +251,45 @@ onResize();
 function wireButtons() {
   const $ = (id) => document.getElementById(id);
 
-  // TITLE → CALIBRATION  (must be in click handler for iOS AudioContext unlock)
-  $('btn-start')?.addEventListener('click', async () => {
-    setScene(SCENE.CALIBRATION);
-    await startCapture(state);
+  // TITLE → LEVEL_SELECT
+  $('btn-start')?.addEventListener('click', () => {
+    setScene(SCENE.LEVEL_SELECT);
   });
 
-  // TITLE → PLAYING (practice mode — mic optional)
+  // TITLE → PLAYING (practice mode — mic optional, uses Campfire level)
   $('btn-practice')?.addEventListener('click', async () => {
     startCapture(state).catch(() => {});
-    startGame();
+    startGame(LEVELS_BY_ID['campfire']);
   });
 
   // CALIBRATION → PLAYING
   $('btn-calibration-done')?.addEventListener('click', () => startGame());
 
-  // VICTORY / DEFEAT → PLAYING
-  $('btn-play-again-victory')?.addEventListener('click', () => startGame());
-  $('btn-play-again-defeat')?.addEventListener('click',  () => startGame());
+  // VICTORY / DEFEAT → PLAYING (replay same level)
+  $('btn-play-again-victory')?.addEventListener('click', () => startGame(state.currentLevel));
+  $('btn-play-again-defeat')?.addEventListener('click',  () => startGame(state.currentLevel));
 
-  // VICTORY / DEFEAT → TITLE
-  $('btn-title-victory')?.addEventListener('click', () => setScene(SCENE.TITLE));
-  $('btn-title-defeat')?.addEventListener('click',  () => setScene(SCENE.TITLE));
+  // VICTORY / DEFEAT → LEVEL SELECT
+  $('btn-title-victory')?.addEventListener('click', () => setScene(SCENE.LEVEL_SELECT));
+  $('btn-title-defeat')?.addEventListener('click',  () => setScene(SCENE.LEVEL_SELECT));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Game start — reset to fresh play state
 // ─────────────────────────────────────────────────────────────────────────────
 
-function startGame() {
+/**
+ * Reset and begin a new game round.
+ *
+ * @param {import('./data/levels.js').LevelConfig|null} [levelConfig]
+ *   Level to play. Defaults to the last selected level or Campfire.
+ */
+function startGame(levelConfig) {
+  // Resolve which level to use
+  const level = levelConfig
+    ?? state.currentLevel
+    ?? LEVELS_BY_ID['campfire'];
+
   const fresh = createInitialState();
 
   // Preserve audio calibration
@@ -253,6 +308,8 @@ function startGame() {
     cueDisplayStyle: state.cueDisplayStyle,
     instrument:      state.instrument || 'piano',
     inputMode:       'summon',   // always reset to summon on new game
+    currentLevel:    level,
+    starsEarned:     0,
   });
 
   // Preserve canvas dimensions — managed by onResize(), not game logic.
@@ -268,6 +325,25 @@ function startGame() {
   state.playerBase = new Base('player', (PLAYER_BASE_X + BASE_WIDTH / 2) * W, baseY);
   state.enemyBase  = new Base('enemy',  (ENEMY_BASE_X  + BASE_WIDTH / 2) * W, baseY);
 
+  // Apply purchased skill buffs (also adjusts playerBase.hp/maxHp if iron-will bought)
+  applySkills(state, progression);
+
+  // Apply level starting resources (after skills so War Chest stacks)
+  state.resources = level.startResources + (state.skillSummonCooldownBonus > 0 ? 0 : 0);
+  // War Chest adds to resources via skill effect, level sets the base — combine them:
+  // applySkills already ran state.resources += bonus on the fresh 200 default.
+  // We replace with level value + whatever bonus was already added.
+  const skillResourceBonus = state.resources - 200;   // delta from default
+  state.resources = level.startResources + skillResourceBonus;
+
+  // Apply difficulty to initial spawn timing
+  const DIFF_INTERVALS = { easy: 12, medium: 8, hard: 5 };
+  let baseInterval = DIFF_INTERVALS[state.difficulty] ?? 8;
+  // Level spawnMod scales the interval (>1 = slower enemies = easier)
+  baseInterval = baseInterval * (level.spawnMod ?? 1.0);
+  state.enemySpawnInterval = baseInterval + (state.skillSpawnIntervalBonus || 0);
+  state.enemySpawnTimer    = state.enemySpawnInterval;
+
   // Initialise subsystems
   tablatureSystem.reset(state);
   attackSequenceSystem.reset(state);
@@ -275,11 +351,6 @@ function startGame() {
 
   // Announce Wave 1
   state.waveAnnounce = performance.now();
-
-  // Apply difficulty to initial spawn timing
-  const DIFF_INTERVALS = { easy: 12, medium: 8, hard: 5 };
-  state.enemySpawnInterval = DIFF_INTERVALS[state.difficulty] ?? 8;
-  state.enemySpawnTimer    = state.enemySpawnInterval;
 
   keyboardInput.start(state, tablatureSystem, attackSequenceSystem);
   setScene(SCENE.PLAYING);
@@ -318,16 +389,17 @@ function rollEnemyTier(wave, elapsedSecs) {
 
 /**
  * Spawn one enemy unit just outside the enemy base.
- * Hard cap: does nothing if ≥ 6 enemy units are already on screen.
+ * Hard cap: governed by state.currentLevel.maxEnemyCap (default 6).
  * Speed cap: enemy speed is halved vs player-unit base stats.
  */
 function spawnEnemyUnit() {
-  // Hard cap — prevent overwhelming the player with too many enemies at once
+  // Hard cap — respect per-level enemy count ceiling
+  const cap = state.currentLevel?.maxEnemyCap ?? 6;
   let enemyCount = 0;
   for (let i = 0; i < state.units.length; i++) {
     if (state.units[i].team === 'enemy') enemyCount++;
   }
-  if (enemyCount >= 6) return;
+  if (enemyCount >= cap) return;
 
   const W        = state.canvas.width;
   const H        = state.canvas.height;
@@ -345,6 +417,16 @@ function spawnEnemyUnit() {
   const unit = new Unit('enemy', tier, x, y);
   // Global 0.5× enemy speed — makes early game much more manageable
   unit.speed *= 0.5;
+  // Level difficulty modifier scales enemy HP (difficultyMod < 1 = easier, > 1 = harder)
+  const dMod = state.currentLevel?.difficultyMod ?? 1.0;
+  if (dMod !== 1.0) {
+    unit.hp    = Math.round(unit.hp    * dMod);
+    unit.maxHp = Math.round(unit.maxHp * dMod);
+  }
+  // Apply unit damage buff from skills
+  if (state.skillUnitDamageMult && state.skillUnitDamageMult !== 1.0) {
+    // (damage buff applies to player units only — enemy units are untouched)
+  }
   attackSequenceSystem.assignSequence(unit);
   state.units.push(unit);
 }
@@ -388,6 +470,15 @@ function spawnPlayerUnit(tier, free = false, unitType = null, swarmOffset = 0) {
   const y      = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
 
   const unit = new Unit('player', tier, x, y);
+
+  // Apply skill HP and damage multipliers to player units
+  if (state.skillUnitHpMult && state.skillUnitHpMult !== 1.0) {
+    unit.hp    = Math.round(unit.hp    * state.skillUnitHpMult);
+    unit.maxHp = Math.round(unit.maxHp * state.skillUnitHpMult);
+  }
+  if (state.skillUnitDamageMult && state.skillUnitDamageMult !== 1.0) {
+    unit.damage = Math.round(unit.damage * state.skillUnitDamageMult);
+  }
 
   // Visual type
   if (unitType) unit.unitType = unitType;
@@ -461,8 +552,9 @@ function update(dt) {
       promptManager.update(dt, state);
       // No resource auto-tick — resources earned from kills only
 
-      // ── Wave progression (every 30 s of play time) ───────────────────────
-      const targetWave = Math.min(10, 1 + Math.floor(state.time / 30));
+      // ── Wave progression (every 30 s of play time, capped by level) ────────
+      const maxWaves  = state.currentLevel?.maxWaves ?? 10;
+      const targetWave = Math.min(maxWaves, 1 + Math.floor(state.time / 30));
       if (targetWave > state.wave) {
         state.wave         = targetWave;
         state.waveAnnounce = performance.now();
@@ -536,9 +628,10 @@ function update(dt) {
             state.comboLastInputTime = performance.now();
             const COMBO_MILESTONES = [5, 10, 20];
             if (COMBO_MILESTONES.includes(state.combo)) {
-              state.resources   = Math.min(999, state.resources + 25);
+              const bonus = state.skillComboDoubleMilestone ? 50 : 25;
+              state.resources      = Math.min(999, state.resources + bonus);
               state.comboBonusTime = performance.now();
-              console.log(`[combo] milestone ${state.combo} → +25 bonus resources`);
+              console.log(`[combo] milestone ${state.combo} → +${bonus} bonus resources`);
             }
             // Kill melody — throttled to ≤ 1 per 800 ms
             const now = performance.now();
@@ -555,8 +648,25 @@ function update(dt) {
       }
 
       // ── Win / lose ────────────────────────────────────────────────────────
-      if (state.playerBase.isDestroyed()) { setScene(SCENE.DEFEAT);  break; }
-      if (state.enemyBase.isDestroyed())  { setScene(SCENE.VICTORY); break; }
+      if (state.playerBase.isDestroyed()) {
+        setScene(SCENE.DEFEAT);
+        break;
+      }
+      if (state.enemyBase.isDestroyed()) {
+        // Compute and persist star result
+        if (state.currentLevel) {
+          state.starsEarned = computeStars(
+            state.playerBase.hp,
+            state.playerBase.maxHp,
+            state.currentLevel
+          );
+          progression = awardStars(state.currentLevel.id, state.starsEarned, progression);
+          saveProgress(progression);
+          console.log(`[victory] ${state.starsEarned}★ on ${state.currentLevel.id}`);
+        }
+        setScene(SCENE.VICTORY);
+        break;
+      }
       break;
     }
 
@@ -581,6 +691,28 @@ document.addEventListener('visibilitychange', () => {
 setScene(SCENE.TITLE);
 wireButtons();
 settingsUI.render(state, startGame);
+
+// LevelSelectUI: render once with current progression.
+// onSelectLevel triggers calibration (for guitar) or direct game start (for piano/practice).
+levelSelectUI.render(
+  progression,
+  (levelConfig) => {
+    state.currentLevel = levelConfig;
+    if (state.instrument === 'guitar' || state.instrument === 'voice') {
+      // Mic needed — go through calibration first
+      setScene(SCENE.CALIBRATION);
+      startCapture(state).catch(() => {});
+    } else {
+      // Piano mode — start immediately
+      startCapture(state).catch(() => {});
+      startGame(levelConfig);
+    }
+  },
+  (updatedProg) => {
+    progression = updatedProg;
+  }
+);
+
 initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) => {
   if (state.scene !== SCENE.PLAYING) return;
   if (state.inputMode === mode) return;

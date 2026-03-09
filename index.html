@@ -20,9 +20,9 @@
     <section class="screen" id="screen-title" data-show-on="TITLE">
       <h1 class="logo">CHORD<br>WARS</h1>
       <p class="tagline">Play guitar. Summon warriors. Defend the realm.</p>
-      <button class="btn btn--primary" id="btn-start">Start Game</button>
+      <button class="btn btn--primary" id="btn-start">Play</button>
       <button class="btn btn--ghost"   id="btn-practice">Practice Mode</button>
-      <p class="mic-notice">🎙 Microphone required</p>
+      <p class="mic-notice">🎙 Microphone required for guitar mode</p>
       <button id="btn-settings" aria-label="Settings">⚙ Settings</button>
     </section>
 
@@ -42,12 +42,40 @@
       <!-- Populated at runtime by src/ui/hud.js -->
     </section>
 
+    <!-- ── LEVEL SELECT screen ── -->
+    <section class="screen" id="screen-level-select" data-show-on="LEVEL_SELECT">
+      <h2 class="level-select__title">Choose Your Battle</h2>
+
+      <!-- Star currency display -->
+      <p class="level-select__stars" id="ls-star-count">★ <span id="ls-stars">0</span> stars available</p>
+
+      <!-- Level cards row -->
+      <div class="level-cards" id="ls-level-cards">
+        <!-- Populated by LevelSelectUI.render() -->
+      </div>
+
+      <!-- Upgrades toggle -->
+      <button class="btn btn--ghost btn--sm" id="btn-upgrades">⬆ Upgrades</button>
+
+      <!-- Skill tree panel (shown/hidden by js) -->
+      <div class="skill-panel" id="skill-panel" hidden>
+        <div class="skill-panel__header">
+          <h3>Upgrades</h3>
+          <button class="skill-panel__close" id="btn-skill-close" aria-label="Close">✕</button>
+        </div>
+        <div class="skill-panel__body" id="skill-tree">
+          <!-- Populated by LevelSelectUI.renderSkillTree() -->
+        </div>
+      </div>
+    </section>
+
     <!-- ── VICTORY screen ── -->
     <section class="screen" id="screen-victory" data-show-on="VICTORY">
       <h2>Victory!</h2>
+      <div class="victory-stars" id="victory-stars"><!-- star icons injected by js --></div>
       <p id="victory-score"></p>
       <button class="btn btn--primary" id="btn-play-again-victory">Play Again</button>
-      <button class="btn btn--ghost"   id="btn-title-victory">Main Menu</button>
+      <button class="btn btn--ghost"   id="btn-title-victory">Level Select</button>
     </section>
 
     <!-- ── DEFEAT screen ── -->
@@ -55,7 +83,7 @@
       <h2>Defeated…</h2>
       <p id="defeat-score"></p>
       <button class="btn btn--primary" id="btn-play-again-defeat">Try Again</button>
-      <button class="btn btn--ghost"   id="btn-title-defeat">Main Menu</button>
+      <button class="btn btn--ghost"   id="btn-title-defeat">Level Select</button>
     </section>
 
   </div><!-- /#overlay -->
