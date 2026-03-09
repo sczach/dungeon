@@ -1,41 +1,48 @@
 /**
  * @file src/data/skills.js
- * Skill tree node definitions for ChordWars persistent progression.
+ * Skill tree node definitions — musical progression edition.
  *
  * Skills are purchased with stars (earned on victory) and apply passive
- * buffs to the game state at startGame() time. They never run in the rAF loop.
+ * buffs to game state at startGame() time. They never run in the rAF loop.
  *
- * Tree structure:
- *   Tier 1 (cost 1 star) — no prerequisites
- *   Tier 2 (cost 2 stars) — requires one Tier-1 skill
- *   Tier 3 (cost 3 stars) — requires one Tier-2 skill
+ * Three tiers reflecting genuine musical development:
+ *   Tier I  — Rhythm    (cost 1 star, no prerequisites)
+ *   Tier II — Technique (cost 2 stars, requires one Tier-I skill)
+ *   Tier III— Theory    (cost 3 stars, requires one Tier-II skill)
  *
- * Effect functions receive the canonical state object after createInitialState()
- * runs, so they can safely mutate any numeric field.
+ * Prerequisite chains (three independent paths):
+ *   steady-tempo → chord-fluency → minor-mastery
+ *   downbeat     → articulation  → scale-runner
+ *   pulse        → legato        → resolution
+ *
+ * Flavor text is intentionally educational — each description names the
+ * musical concept it rewards so players absorb music theory while playing.
  */
 
 /**
  * @typedef {Object} SkillNode
- * @property {string}   id          — unique identifier
- * @property {string}   name        — display name
- * @property {string}   description — one-line tooltip
- * @property {string}   icon        — emoji icon for the card
- * @property {number}   tier        — 1 | 2 | 3
- * @property {number}   cost        — stars required to purchase
- * @property {string|null} requires — id of prerequisite skill, or null
- * @property {function} effect      — (state) => void — applied once per startGame()
+ * @property {string}      id
+ * @property {string}      name
+ * @property {string}      description
+ * @property {string}      icon
+ * @property {number}      tier        — 1 | 2 | 3
+ * @property {number}      cost        — stars required to purchase
+ * @property {string|null} requires    — prerequisite skill id, or null
+ * @property {function}    effect      — (state) => void — applied once per startGame()
  */
 
 /** @type {ReadonlyArray<Readonly<SkillNode>>} */
 export const SKILLS = Object.freeze([
 
-  // ── Tier 1 ─────────────────────────────────────────────────────────────────
+  // ── Tier I — Rhythm ────────────────────────────────────────────────────────
+  // Rhythm is the foundation of music. These skills reward the most basic
+  // musical skill: showing up and playing consistently.
 
   Object.freeze({
-    id:          'extra-gold',
-    name:        'War Chest',
-    description: '+50 starting resources',
-    icon:        '💰',
+    id:          'steady-tempo',
+    name:        'Steady Tempo',
+    description: 'A consistent pulse is everything. +50 starting resources — steady practice pays off.',
+    icon:        '🥁',
     tier:        1,
     cost:        1,
     requires:    null,
@@ -43,102 +50,104 @@ export const SKILLS = Object.freeze([
   }),
 
   Object.freeze({
-    id:          'quick-hands',
-    name:        'Quick Hands',
-    description: 'Summon cooldown −100ms',
-    icon:        '⚡',
+    id:          'downbeat',
+    name:        'Downbeat',
+    description: 'The first beat of every measure carries the most weight. Combo milestone bonuses doubled.',
+    icon:        '♩',
     tier:        1,
     cost:        1,
     requires:    null,
-    // summonCooldownEnd starts at 0 (no cooldown); we store the reduction
-    // as a state flag; game.js reads it when setting SUMMON_COOLDOWN_MS.
-    // Implemented by reducing the tablature SUMMON_COOLDOWN_MS baseline via
-    // a state field that TablatureSystem reads on its first note hit.
-    effect(state) { state.skillSummonCooldownBonus = (state.skillSummonCooldownBonus || 0) + 100; },
-  }),
-
-  Object.freeze({
-    id:          'iron-will',
-    name:        'Iron Will',
-    description: 'Player base starts with +20 max HP',
-    icon:        '🛡️',
-    tier:        1,
-    cost:        1,
-    requires:    null,
-    // Applied after playerBase is constructed — game.js calls applySkills()
-    // after base construction, then updates the base's maxHp and hp.
-    effect(state) { state.skillBaseHpBonus = (state.skillBaseHpBonus || 0) + 20; },
-  }),
-
-  // ── Tier 2 ─────────────────────────────────────────────────────────────────
-
-  Object.freeze({
-    id:          'battalion',
-    name:        'Battalion',
-    description: 'Max player units on screen +2',
-    icon:        '⚔️',
-    tier:        2,
-    cost:        2,
-    requires:    'extra-gold',
-    effect(state) { state.skillMaxUnitsBonus = (state.skillMaxUnitsBonus || 0) + 2; },
-  }),
-
-  Object.freeze({
-    id:          'veterans',
-    name:        'Veterans',
-    description: 'Player units spawn with +20% HP',
-    icon:        '💪',
-    tier:        2,
-    cost:        2,
-    requires:    'quick-hands',
-    effect(state) { state.skillUnitHpMult = (state.skillUnitHpMult || 1.0) * 1.2; },
-  }),
-
-  Object.freeze({
-    id:          'arsenal',
-    name:        'Arsenal',
-    description: 'Player units deal +15% damage',
-    icon:        '🗡️',
-    tier:        2,
-    cost:        2,
-    requires:    'iron-will',
-    effect(state) { state.skillUnitDamageMult = (state.skillUnitDamageMult || 1.0) * 1.15; },
-  }),
-
-  // ── Tier 3 ─────────────────────────────────────────────────────────────────
-
-  Object.freeze({
-    id:          'fortress',
-    name:        'Fortress',
-    description: 'Player base starts with +30 additional max HP',
-    icon:        '🏰',
-    tier:        3,
-    cost:        3,
-    requires:    'battalion',
-    effect(state) { state.skillBaseHpBonus = (state.skillBaseHpBonus || 0) + 30; },
-  }),
-
-  Object.freeze({
-    id:          'commander',
-    name:        'Commander',
-    description: 'Combo milestone resource bonuses doubled',
-    icon:        '👑',
-    tier:        3,
-    cost:        3,
-    requires:    'veterans',
     effect(state) { state.skillComboDoubleMilestone = true; },
   }),
 
   Object.freeze({
-    id:          'tempo',
-    name:        'Tempo',
-    description: 'Enemy spawn interval +1s (more breathing room)',
+    id:          'pulse',
+    name:        'Pulse',
+    description: 'Music breathes — silence is part of the phrase. Enemy spawn interval +1.5s.',
+    icon:        '〰️',
+    tier:        1,
+    cost:        1,
+    requires:    null,
+    effect(state) { state.skillSpawnIntervalBonus = (state.skillSpawnIntervalBonus || 0) + 1.5; },
+  }),
+
+  // ── Tier II — Technique ────────────────────────────────────────────────────
+  // Technique is how you execute what you know. Faster fingers, cleaner
+  // attack, smoother connection between notes.
+
+  Object.freeze({
+    id:          'chord-fluency',
+    name:        'Chord Fluency',
+    description: 'Every new chord shape you learn opens new tactical options. Max units on screen +2.',
+    icon:        '🎼',
+    tier:        2,
+    cost:        2,
+    requires:    'steady-tempo',
+    effect(state) { state.skillMaxUnitsBonus = (state.skillMaxUnitsBonus || 0) + 2; },
+  }),
+
+  Object.freeze({
+    id:          'articulation',
+    name:        'Articulation',
+    description: 'Each note intentional, each attack deliberate. Player units deal +20% damage.',
+    icon:        '🎯',
+    tier:        2,
+    cost:        2,
+    requires:    'downbeat',
+    effect(state) { state.skillUnitDamageMult = (state.skillUnitDamageMult || 1.0) * 1.2; },
+  }),
+
+  Object.freeze({
+    id:          'legato',
+    name:        'Legato',
+    description: 'Smooth, connected playing sustains the phrase — and your forces. Units spawn with +25% HP.',
+    icon:        '🌊',
+    tier:        2,
+    cost:        2,
+    requires:    'pulse',
+    effect(state) { state.skillUnitHpMult = (state.skillUnitHpMult || 1.0) * 1.25; },
+  }),
+
+  // ── Tier III — Theory ──────────────────────────────────────────────────────
+  // Theory is understanding WHY music works. These skills reward players who
+  // have internalized rhythm and technique and can now think musically.
+
+  Object.freeze({
+    id:          'minor-mastery',
+    name:        'Minor Mastery',
+    description: 'Minor keys carry weight and tension — mastering them means mastering emotion. Summon cooldown −200ms.',
+    icon:        '🌑',
+    tier:        3,
+    cost:        3,
+    requires:    'chord-fluency',
+    effect(state) { state.skillSummonCooldownBonus = (state.skillSummonCooldownBonus || 0) + 200; },
+  }),
+
+  Object.freeze({
+    id:          'scale-runner',
+    name:        'Scale Runner',
+    description: 'Scales are the alphabet of music. Running them builds endurance. Player base +25 max HP.',
     icon:        '🎵',
     tier:        3,
     cost:        3,
-    requires:    'arsenal',
-    effect(state) { state.skillSpawnIntervalBonus = (state.skillSpawnIntervalBonus || 0) + 1.0; },
+    requires:    'articulation',
+    effect(state) { state.skillBaseHpBonus = (state.skillBaseHpBonus || 0) + 25; },
   }),
+
+  Object.freeze({
+    id:          'resolution',
+    name:        'Resolution',
+    description: 'Returning to the root note completes the phrase. V→I resolution: +20 base HP and +15% unit HP.',
+    icon:        '🏠',
+    tier:        3,
+    cost:        3,
+    requires:    'legato',
+    effect(state) {
+      state.skillBaseHpBonus = (state.skillBaseHpBonus || 0) + 20;
+      state.skillUnitHpMult  = (state.skillUnitHpMult  || 1.0) * 1.15;
+    },
+  }),
+
 ]);
 
 /** Convenience map for O(1) lookup by id. */
