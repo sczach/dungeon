@@ -8,6 +8,11 @@
  *
  * Unlock logic: computed at runtime from progression.bestStars — not stored
  * directly so it can never go stale against save data.
+ *
+ * Star thresholds are NOTE ACCURACY PERCENTAGES (0–100):
+ *   starThresholds[0] = minimum accuracy for 1★ (always 0 — any win = 1★)
+ *   starThresholds[1] = minimum accuracy for 2★
+ *   starThresholds[2] = minimum accuracy for 3★
  */
 
 /**
@@ -22,7 +27,7 @@
  * @property {number}   startResources  — initial resource amount (overrides game.js default 200)
  * @property {number}   maxEnemyCap     — max simultaneous enemy units on screen
  * @property {string}   unlockRequires  — id of level that must be beaten first, or null
- * @property {number[]} starThresholds  — base HP % remaining for [1-star, 2-star, 3-star]
+ * @property {number[]} starThresholds  — note accuracy % for [1★, 2★, 3★]
  */
 
 /** @type {ReadonlyArray<Readonly<LevelConfig>>} */
@@ -38,7 +43,7 @@ export const LEVELS = Object.freeze([
     startResources: 250,    // extra starting gold
     maxEnemyCap:    5,
     unlockRequires: null,   // always available
-    starThresholds: [1, 51, 76],  // ≥1% = 1★, ≥51% = 2★, ≥76% = 3★
+    starThresholds: [0, 65, 85],  // 1★: any win; 2★: ≥65% accuracy; 3★: ≥85%
   }),
   Object.freeze({
     id:             'crossing',
@@ -46,12 +51,12 @@ export const LEVELS = Object.freeze([
     subtitle:       'Hold the bridge',
     icon:           '⚔️',
     maxWaves:       10,
-    difficultyMod:  1.0,    // standard enemy strength
-    spawnMod:       1.0,    // standard spawn timing
+    difficultyMod:  1.0,
+    spawnMod:       1.0,
     startResources: 200,
     maxEnemyCap:    6,
     unlockRequires: 'campfire',
-    starThresholds: [1, 61, 86],
+    starThresholds: [0, 70, 90],  // 1★: any win; 2★: ≥70% accuracy; 3★: ≥90%
   }),
   Object.freeze({
     id:             'siege',
@@ -59,12 +64,12 @@ export const LEVELS = Object.freeze([
     subtitle:       'Last stand',
     icon:           '🏰',
     maxWaves:       10,
-    difficultyMod:  1.35,   // tankier enemies, more tier-3 at end
-    spawnMod:       0.8,    // faster enemy spawns
-    startResources: 150,    // fewer starting resources — pressure from turn 1
+    difficultyMod:  1.35,
+    spawnMod:       0.8,
+    startResources: 150,
     maxEnemyCap:    8,
     unlockRequires: 'crossing',
-    starThresholds: [1, 41, 71],
+    starThresholds: [0, 70, 90],  // same as Crossing — accuracy standard doesn't drop
   }),
 ]);
 
@@ -74,20 +79,20 @@ export const LEVELS_BY_ID = Object.freeze(
 );
 
 /**
- * Determine how many stars were earned based on remaining base HP percentage.
+ * Compute the star rating for a completed level based on note accuracy.
  *
- * @param {number} baseHp     — current player base HP (0–maxHp)
- * @param {number} baseMaxHp  — max player base HP
- * @param {LevelConfig} level — the level config for its starThresholds
- * @returns {0|1|2|3}
+ * Called only on VICTORY (enemy base destroyed). 1★ is always awarded for
+ * winning regardless of accuracy — starThresholds[0] is reserved for this.
+ *
+ * @param {number}      accuracyPct — 0–100 note accuracy % for this run
+ * @param {LevelConfig} level       — the level config for its starThresholds
+ * @returns {1|2|3}
  */
-export function computeStars(baseHp, baseMaxHp, level) {
-  const pct = baseMaxHp > 0 ? (baseHp / baseMaxHp) * 100 : 0;
-  const [t1, t2, t3] = level.starThresholds;
-  if (pct >= t3) return 3;
-  if (pct >= t2) return 2;
-  if (pct >= t1) return 1;
-  return 0;
+export function computeStars(accuracyPct, level) {
+  const [, t2, t3] = level.starThresholds;
+  if (accuracyPct >= t3) return 3;
+  if (accuracyPct >= t2) return 2;
+  return 1;  // always at least 1★ for winning
 }
 
 /**

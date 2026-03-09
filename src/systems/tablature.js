@@ -82,6 +82,9 @@ export class TablatureSystem {
     tab.blockedTime       = 0;
     tab.sequenceDoneTime  = 0;  // performance.now() when all 3 were hit; 0 = not done
     tab.unitType          = 'archer';  // set by _fillQueue from first note of sequence
+    // Musical performance counters — reset each run, read at VICTORY
+    tab.totalHits         = 0;
+    tab.totalMisses       = 0;
     this._fillQueue(tab);
   }
 
@@ -151,6 +154,7 @@ export class TablatureSystem {
       slot.status     = 'hit';
       slot.statusTime = now;
       tab.activeIndex++;
+      tab.totalHits = (tab.totalHits || 0) + 1;
 
       // Update global combo
       state.combo = (state.combo || 0) + 1;
@@ -186,6 +190,7 @@ export class TablatureSystem {
       // Wrong note — flash the active pill red; DO NOT reset sequence
       slot.status     = 'miss';
       slot.statusTime = now;
+      tab.totalMisses = (tab.totalMisses || 0) + 1;
       // Miss resets the global combo
       state.combo = 0;
       state.comboLastInputTime = now;

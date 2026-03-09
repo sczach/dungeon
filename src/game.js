@@ -133,6 +133,7 @@ function createInitialState() {
     // ── Level & progression ───────────────────
     currentLevel:   null,    // LevelConfig — set when player picks a level
     starsEarned:    0,       // 0–3, computed at VICTORY
+    noteAccuracy:   100,     // 0–100 note accuracy % for this run (set at VICTORY)
 
     // ── Skill buff fields (reset + applied by applySkills()) ─────────────────
     skillSummonCooldownBonus:  0,
@@ -194,7 +195,7 @@ function setScene(scene) {
 
   // Populate victory / defeat overlays
   if (scene === SCENE.VICTORY) {
-    const stars  = state.starsEarned ?? 0;
+    const stars   = state.starsEarned ?? 0;
     const starsEl = document.getElementById('victory-stars');
     if (starsEl) {
       let html = '';
@@ -205,6 +206,9 @@ function setScene(scene) {
       }
       starsEl.innerHTML = html;
     }
+    const acc     = state.noteAccuracy ?? 100;
+    const accEl   = document.getElementById('victory-accuracy');
+    if (accEl) accEl.textContent = `Note accuracy: ${acc}%`;
     const scoreEl = document.getElementById('victory-score');
     if (scoreEl) scoreEl.textContent = `Score: ${state.score}`;
   }
@@ -673,16 +677,19 @@ function update(dt) {
         break;
       }
       if (state.enemyBase.isDestroyed()) {
+        // Compute accuracy from tablature hit/miss counters
+        const tab   = state.tablature;
+        const total = (tab.totalHits || 0) + (tab.totalMisses || 0);
+        state.noteAccuracy = total > 0
+          ? Math.round((tab.totalHits || 0) / total * 100)
+          : 100;  // no notes played (practice skip) → perfect score
+
         // Compute and persist star result
         if (state.currentLevel) {
-          state.starsEarned = computeStars(
-            state.playerBase.hp,
-            state.playerBase.maxHp,
-            state.currentLevel
-          );
+          state.starsEarned = computeStars(state.noteAccuracy, state.currentLevel);
           progression = awardStars(state.currentLevel.id, state.starsEarned, progression);
           saveProgress(progression);
-          console.log(`[victory] ${state.starsEarned}★ on ${state.currentLevel.id}`);
+          console.log(`[victory] ${state.starsEarned}★ accuracy=${state.noteAccuracy}% on ${state.currentLevel.id}`);
         }
         setScene(SCENE.VICTORY);
         break;
