@@ -262,11 +262,10 @@ export class SettingsUI {
 
   /**
    * Create and inject the settings panel DOM (idempotent).
-   * The panel is hidden by default; CSS shows it when data-scene="title".
+   * The panel is hidden by default and toggled by the ⚙ gear button.
    * @param {object} state
-   * @param {Function} onStart  — called when player clicks ▶ Start Game
    */
-  render(state, onStart) {
+  render(state) {
     if (this._panel) return; // already rendered
 
     // Inject shared CSS once
@@ -318,33 +317,6 @@ export class SettingsUI {
         <button class="cw-cue-btn" data-style="staff">Staff</button>
       </div>
 
-      <hr class="cw-sep">
-
-      <div class="cw-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
-        <span class="cw-label" style="color:#a09880;font-size:11px;">Instrument</span>
-        <div class="cw-instrument-grid">
-          <div class="cw-instrument-tile" data-instrument="piano" id="cw-inst-piano">
-            <span class="cw-tile-icon">🎹</span>
-            <span class="cw-tile-name">Piano</span>
-          </div>
-          <div class="cw-instrument-tile disabled" data-instrument="guitar" id="cw-inst-guitar" title="Coming Soon">
-            <span class="cw-tile-soon">Soon</span>
-            <span class="cw-tile-icon">🎸</span>
-            <span class="cw-tile-name">Guitar</span>
-          </div>
-          <div class="cw-instrument-tile disabled" data-instrument="voice" id="cw-inst-voice" title="Coming Soon">
-            <span class="cw-tile-soon">Soon</span>
-            <span class="cw-tile-icon">🎤</span>
-            <span class="cw-tile-name">Voice</span>
-          </div>
-        </div>
-      </div>
-
-      <hr class="cw-sep">
-
-      <div class="cw-row" style="justify-content:center;">
-        <button id="cw-start-game-btn">▶ Start Game</button>
-      </div>
     `;
     document.body.appendChild(panel);
     this._panel = panel;
@@ -410,22 +382,6 @@ export class SettingsUI {
     });
     this._refreshCueStyle(panel, state.cueDisplayStyle || DEFAULTS.cueDisplayStyle);
 
-    // Instrument tiles — only Piano is clickable (Guitar/Voice are Coming Soon)
-    panel.querySelectorAll('.cw-instrument-tile:not(.disabled)').forEach((tile) => {
-      tile.addEventListener('click', () => {
-        state.instrument = tile.dataset.instrument;
-        this._refreshInstrument(panel, state.instrument);
-        this.saveSettings(state);
-        console.log('[settings] instrument →', state.instrument);
-      });
-    });
-    this._refreshInstrument(panel, state.instrument || DEFAULTS.instrument);
-
-    // Start Game
-    panel.querySelector('#cw-start-game-btn').addEventListener('click', () => {
-      if (typeof onStart === 'function') onStart();
-    });
-
     // Gear button toggles the panel
     const gearBtn = document.getElementById('btn-settings');
     if (gearBtn) {
@@ -485,9 +441,4 @@ export class SettingsUI {
     });
   }
 
-  _refreshInstrument(panel, instrument) {
-    panel.querySelectorAll('.cw-instrument-tile').forEach((tile) => {
-      tile.classList.toggle('active', tile.dataset.instrument === instrument);
-    });
-  }
 }

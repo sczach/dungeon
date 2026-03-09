@@ -81,12 +81,14 @@ export class Renderer {
     if (W === 0 || H === 0) return;
     this._clear(W, H);
     switch (state.scene) {
-      case SCENE.TITLE:        this._drawTitle(state, W, H);       break;
-      case SCENE.LEVEL_SELECT: this._drawLevelSelect(W, H);        break;
-      case SCENE.CALIBRATION:  this._drawCalibration(state, W, H); break;
-      case SCENE.PLAYING:      this._drawPlaying(state, W, H);     break;
-      case SCENE.VICTORY:      this._drawVictory(state, W, H);     break;
-      case SCENE.DEFEAT:       this._drawDefeat(state, W, H);      break;
+      case SCENE.TITLE:             this._drawTitle(state, W, H);       break;
+      case SCENE.INSTRUMENT_SELECT: this._drawInstrumentSelect(W, H);   break;
+      case SCENE.LEVEL_SELECT:      this._drawLevelSelect(W, H);        break;
+      case SCENE.CALIBRATION:       this._drawCalibration(state, W, H); break;
+      case SCENE.PLAYING:           this._drawPlaying(state, W, H);     break;
+      case SCENE.VICTORY:           this._drawVictory(state, W, H);     break;
+      case SCENE.DEFEAT:            this._drawDefeat(state, W, H);      break;
+      case SCENE.ENDGAME:           this._drawEndgame(W, H);            break;
     }
   }
 
@@ -847,6 +849,24 @@ export class Renderer {
   // ─────────────────────────────────────────
 
   // ─────────────────────────────────────────
+  // Scene: INSTRUMENT_SELECT
+  // ─────────────────────────────────────────
+
+  /** Canvas background only — all content rendered by InstrumentSelectUI overlay. */
+  _drawInstrumentSelect(W, H) {
+    this._titlePhase += 0.005;
+    const t  = this._titlePhase;
+    const gx = W / 2, gy = H * 0.5;
+    const glow = this.ctx.createRadialGradient(gx, gy, 0, gx, gy, W * 0.65);
+    glow.addColorStop(0,   `rgba(91,143,255,${0.07 + 0.025 * Math.sin(t)})`);
+    glow.addColorStop(0.5, `rgba(232,160,48,${0.03 + 0.012 * Math.sin(t * 1.15)})`);
+    glow.addColorStop(1,   'rgba(10,10,15,0)');
+    this.ctx.fillStyle = glow;
+    this.ctx.fillRect(0, 0, W, H);
+    this._drawStars(W, H, t);
+  }
+
+  // ─────────────────────────────────────────
   // Scene: LEVEL_SELECT
   // ─────────────────────────────────────────
 
@@ -866,6 +886,24 @@ export class Renderer {
 
   _drawVictory(state, W, H) { this._drawEndScreen(W, H, CLR.ACCENT2, 0.18); }
   _drawDefeat(state, W, H)  { this._drawEndScreen(W, H, CLR.DANGER,  0.12); }
+
+  // ─────────────────────────────────────────
+  // Scene: ENDGAME
+  // ─────────────────────────────────────────
+
+  /** Golden triumphant glow — all realms conquered. */
+  _drawEndgame(W, H) {
+    this._titlePhase += 0.004;
+    const t  = this._titlePhase;
+    const gx = W / 2, gy = H * 0.42;
+    const glow = this.ctx.createRadialGradient(gx, gy, 0, gx, gy, W * 0.65);
+    glow.addColorStop(0,   `rgba(232,160,48,${0.14 + 0.06 * Math.sin(t)})`);
+    glow.addColorStop(0.4, `rgba(232,100,48,${0.06 + 0.025 * Math.sin(t * 1.1)})`);
+    glow.addColorStop(1,   'rgba(10,10,15,0)');
+    this.ctx.fillStyle = glow;
+    this.ctx.fillRect(0, 0, W, H);
+    this._drawStars(W, H, t);
+  }
 
   _drawEndScreen(W, H, colour, alpha) {
     this.ctx.save();

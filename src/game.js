@@ -30,11 +30,12 @@ import { keyboardInput, playSuccessKill } from './input/keyboard.js';
 import { initPianoTouchInput }            from './ui/hud.js';
 import { SettingsUI }                     from './ui/settings.js';
 import { LevelSelectUI }                  from './ui/levelselect.js';
+import { InstrumentSelectUI }             from './ui/instrumentselect.js';
 import { TablatureSystem }       from './systems/tablature.js';
 import { AttackSequenceSystem }  from './systems/attackSequence.js';
 import { PromptManager }         from './systems/prompts.js';
 import { loadProgress, saveProgress, awardStars, applySkills } from './systems/progression.js';
-import { LEVELS_BY_ID, computeStars } from './data/levels.js';
+import { LEVELS, LEVELS_BY_ID, computeStars } from './data/levels.js';
 
 // Re-export SCENE for callers that import from game.js
 export { SCENE };
@@ -158,6 +159,7 @@ let progression = loadProgress();
 
 const settingsUI           = new SettingsUI();
 const levelSelectUI        = new LevelSelectUI();
+const instrumentSelectUI   = new InstrumentSelectUI();
 const promptManager        = new PromptManager();
 settingsUI.loadSettings(state);   // override defaults from localStorage
 const tablatureSystem      = new TablatureSystem();
@@ -180,6 +182,11 @@ function setScene(scene) {
   if (scene !== SCENE.TITLE) {
     settingsUI.closePanel();
   }
+  // Sync instrument select highlight on each visit
+  if (scene === SCENE.INSTRUMENT_SELECT) {
+    instrumentSelectUI.refresh(state.instrument || 'piano');
+  }
+
   // Refresh level select display with latest progression on each visit
   if (scene === SCENE.LEVEL_SELECT) {
     levelSelectUI.refresh(progression);
@@ -251,15 +258,20 @@ onResize();
 function wireButtons() {
   const $ = (id) => document.getElementById(id);
 
-  // TITLE → LEVEL_SELECT
+  // TITLE → INSTRUMENT_SELECT
   $('btn-start')?.addEventListener('click', () => {
-    setScene(SCENE.LEVEL_SELECT);
+    setScene(SCENE.INSTRUMENT_SELECT);
   });
 
-  // TITLE → PLAYING (practice mode — mic optional, uses Campfire level)
+  // TITLE → PLAYING (practice mode — piano, Campfire level, bypasses menus)
   $('btn-practice')?.addEventListener('click', async () => {
     startCapture(state).catch(() => {});
     startGame(LEVELS_BY_ID['campfire']);
+  });
+
+  // LEVEL_SELECT → INSTRUMENT_SELECT (back)
+  $('btn-ls-back')?.addEventListener('click', () => {
+    setScene(SCENE.INSTRUMENT_SELECT);
   });
 
   // CALIBRATION → PLAYING
@@ -269,9 +281,17 @@ function wireButtons() {
   $('btn-play-again-victory')?.addEventListener('click', () => startGame(state.currentLevel));
   $('btn-play-again-defeat')?.addEventListener('click',  () => startGame(state.currentLevel));
 
-  // VICTORY / DEFEAT → LEVEL SELECT
-  $('btn-title-victory')?.addEventListener('click', () => setScene(SCENE.LEVEL_SELECT));
-  $('btn-title-defeat')?.addEventListener('click',  () => setScene(SCENE.LEVEL_SELECT));
+  // VICTORY → LEVEL_SELECT (or ENDGAME if all levels 3★)
+  $('btn-title-victory')?.addEventListener('click', () => {
+    const allThreeStars = LEVELS.every(l => (progression.bestStars[l.id] ?? 0) >= 3);
+    setScene(allThreeStars ? SCENE.ENDGAME : SCENE.LEVEL_SELECT);
+  });
+
+  // DEFEAT → LEVEL_SELECT
+  $('btn-title-defeat')?.addEventListener('click', () => setScene(SCENE.LEVEL_SELECT));
+
+  // ENDGAME → LEVEL_SELECT
+  $('btn-endgame-ls')?.addEventListener('click', () => setScene(SCENE.LEVEL_SELECT));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -690,7 +710,17 @@ document.addEventListener('visibilitychange', () => {
 
 setScene(SCENE.TITLE);
 wireButtons();
-settingsUI.render(state, startGame);
+settingsUI.render(state);
+
+// InstrumentSelectUI: render once; callback saves choice + advances to LEVEL_SELECT.
+instrumentSelectUI.render(
+  state.instrument || 'piano',
+  (instrumentId) => {
+    state.instrument = instrumentId;
+    settingsUI.saveSettings(state);
+    setScene(SCENE.LEVEL_SELECT);
+  }
+);
 
 // LevelSelectUI: render once with current progression.
 // onSelectLevel triggers calibration (for guitar) or direct game start (for piano/practice).

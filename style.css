@@ -72,12 +72,14 @@ html, body {
 
 /* game.js sets data-scene="TITLE" etc. on <body>;
    each screen self-activates via CSS attribute selector. */
-body[data-scene="TITLE"]        #screen-title,
-body[data-scene="LEVEL_SELECT"] #screen-level-select,
-body[data-scene="CALIBRATION"]  #screen-calibration,
-body[data-scene="PLAYING"]      #screen-hud,
-body[data-scene="VICTORY"]      #screen-victory,
-body[data-scene="DEFEAT"]       #screen-defeat {
+body[data-scene="TITLE"]             #screen-title,
+body[data-scene="INSTRUMENT_SELECT"] #screen-instrument-select,
+body[data-scene="LEVEL_SELECT"]      #screen-level-select,
+body[data-scene="CALIBRATION"]       #screen-calibration,
+body[data-scene="PLAYING"]           #screen-hud,
+body[data-scene="VICTORY"]           #screen-victory,
+body[data-scene="DEFEAT"]            #screen-defeat,
+body[data-scene="ENDGAME"]           #screen-endgame {
   display: flex;
   pointer-events: auto;   /* restore interaction for active screen */
 }
@@ -449,3 +451,141 @@ body[data-scene="PLAYING"] #screen-hud {
 }
 .victory-stars .star      { color: var(--clr-accent); }
 .victory-stars .star-empty { color: var(--clr-muted); opacity: 0.35; }
+
+/* ─────────────────────────────────────────────
+   INSTRUMENT SELECT
+───────────────────────────────────────────── */
+
+#screen-instrument-select {
+  gap: 1.5rem;
+}
+
+.is-title {
+  font-size: var(--fs-lg);
+  color: var(--clr-accent);
+  letter-spacing: 0.04em;
+}
+
+.is-subtitle {
+  font-size: var(--fs-sm);
+  color: var(--clr-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.is-cards-row {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── Instrument card ── */
+.instrument-card {
+  position: relative;
+  background: var(--clr-surface);
+  border: 2px solid var(--clr-muted);
+  border-radius: 12px;
+  padding: 1.5rem 1.25rem 1.25rem;
+  width: clamp(200px, 28vw, 260px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--transition), transform var(--transition),
+              box-shadow var(--transition);
+}
+
+.instrument-card:hover:not(.instrument-card--soon) {
+  border-color: var(--clr-accent);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 28px rgba(232,160,48,0.25);
+}
+
+.instrument-card--selected {
+  border-color: var(--clr-accent);
+  box-shadow: 0 0 0 3px rgba(232,160,48,0.3);
+}
+
+.instrument-card--soon {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+.instrument-card__badge {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.7rem;
+  font-size: var(--fs-xs);
+  background: rgba(122,112,96,0.2);
+  color: var(--clr-muted);
+  border: 1px solid var(--clr-muted);
+  border-radius: 4px;
+  padding: 2px 7px;
+  letter-spacing: 0.04em;
+}
+
+.icard-icon   { font-size: 2.8rem; line-height: 1; }
+.icard-name   { font-size: var(--fs-base); font-weight: 700; color: var(--clr-text); letter-spacing: 0.03em; }
+.icard-desc   { font-size: var(--fs-xs); color: var(--clr-muted); line-height: 1.45; }
+
+.icard-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.icard-diff-label {
+  font-size: var(--fs-xs);
+  color: var(--clr-muted);
+  letter-spacing: 0.05em;
+}
+
+.icard-dots { display: flex; gap: 4px; }
+
+.icard-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--clr-muted);
+  opacity: 0.3;
+}
+
+.icard-dot--on {
+  background: var(--clr-accent);
+  opacity: 1;
+}
+
+/* ── Back button ── */
+.btn--back {
+  align-self: flex-start;
+  margin-bottom: -0.5rem;
+}
+
+/* ─────────────────────────────────────────────
+   ENDGAME
+───────────────────────────────────────────── */
+
+.endgame-title {
+  font-size: var(--fs-lg);
+  color: var(--clr-accent);
+  letter-spacing: 0.06em;
+}
+
+.endgame-message {
+  font-size: var(--fs-base);
+  color: var(--clr-accent);
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+
+.endgame-teaser {
+  font-size: var(--fs-sm);
+  color: var(--clr-muted);
+  letter-spacing: 0.05em;
+  font-style: italic;
+}
