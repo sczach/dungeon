@@ -9,9 +9,39 @@
 ---
 
 ## Project overview
-Music theory RTS game (late Phase 1C → entering Phase 1D).
-Player plays guitar (mic) or piano keys → spawns units → destroys enemy base.
+Music education RTS game. Player uses their **instrument as the only controller** — every
+game action maps to a musical action. Playing music well = playing the game well.
 Live at: https://chordwars.vercel.app — Vanilla JS, HTML Canvas, Web Audio API, Vercel, no build step.
+
+**Current focus: Piano.** Guitar and Voice are planned but not yet active.
+The on-screen piano keyboard (tap/click) and QWERTY keys are both valid piano inputs.
+Keep the on-screen keyboard — it's critical for onboarding and testing.
+
+---
+
+## Core design principle — never violate
+> The instrument is the ONLY controller. Every game action must map to a musical action.
+> Summoning a unit = playing a note sequence. Attacking = hitting a rhythm.
+> The better you play music, the better you play the game. There is no other way to play.
+
+---
+
+## Scene flow
+```
+TITLE
+  ↓ Play
+INSTRUMENT_SELECT   ← choose Piano / Guitar (soon) / Voice (soon)
+  ↓ Continue
+LEVEL_SELECT        ← back button returns to INSTRUMENT_SELECT
+  ↓ Play level
+CALIBRATION         ← guitar/voice only; piano starts immediately
+  ↓ Ready
+PLAYING
+  ↓
+VICTORY | DEFEAT
+  ↓ Level Select
+LEVEL_SELECT        ← or ENDGAME if all levels are 3★
+```
 
 ---
 
@@ -48,6 +78,17 @@ Live at: https://chordwars.vercel.app — Vanilla JS, HTML Canvas, Web Audio API
 
 ---
 
+## Scoring — musical performance, not just winning
+Stars awarded at VICTORY based on **note accuracy %** (hits / total attempts):
+- 1★ — any win (enemy base destroyed)
+- 2★ — won with ≥65–70% note accuracy (varies by level)
+- 3★ — won with ≥85–90% note accuracy
+
+`computeStars(accuracyPct, level)` in `src/data/levels.js`.
+`tablature.totalHits` and `tablature.totalMisses` tracked per run.
+
+---
+
 ## Critical coding constraints
 - **No bundler** — all JS must be native ES modules (`import`/`export` only, no `require`)
 - **No circular imports** — Safari/Vercel reject circular ES module bindings; extract to constants.js
@@ -72,9 +113,6 @@ Mic → AnalyserNode → buildChromagram() → matchChord() → gates → detect
 - `attack`: attack sequence input
 - Tablature determines unit type from first note (C/D→mage, E/F/G→knight, A/B→archer)
 
-## Scene state machine — SETTLED
-`TITLE → CALIBRATION → PLAYING → VICTORY | DEFEAT → TITLE`
-
 ---
 
 ## File map (current)
@@ -84,7 +122,7 @@ style.css                 — layout + scene visibility
 src/
   game.js                 — rAF loop, scene state machine, ALL mutable state
   renderer.js             — pure canvas draw (reads state only)
-  constants.js            — SCENE enum, LANE_Y, LANE_HEIGHT, BASE_WIDTH, positions
+  constants.js            — SCENE enum (incl. INSTRUMENT_SELECT, ENDGAME), layout consts
   audio/
     index.js              — startCapture(), updateAudio(), updateCalibration()
     chords.js             — chromagram + cosine-similarity chord matching
@@ -94,20 +132,25 @@ src/
     enemy.js              — Enemy class
   systems/
     base.js               — Base class (player/enemy HP)
-    tablature.js          — 3-note summon bar system
+    tablature.js          — 3-note summon bar; tracks totalHits/totalMisses for scoring
     attackSequence.js     — attack sequence assignment + update
     waves.js              — WaveManager, WAVES table
     combat.js             — updateCombat() frame step
     prompts.js            — PromptManager (chord cue cycling, guitar mode)
+    progression.js        — localStorage persistence, star award/spend, applySkills
     path.js               — enemy path waypoints
   input/
     keyboard.js           — piano key input, note dispatch, playSuccessKill
   ui/
-    hud.js                — HUD render + initPianoTouchInput
+    hud.js                — HUD render + initPianoTouchInput (on-screen piano keyboard)
+    instrumentselect.js   — InstrumentSelectUI (Piano/Guitar/Voice cards)
+    levelselect.js        — LevelSelectUI + skill tree panel
+    settings.js           — SettingsUI (audio, difficulty, display settings)
     screens.js            — per-scene screen rendering
-    settings.js           — SettingsUI (localStorage persist)
   data/
     chords.js             — CHORD_DATA, CHORD_FALLBACK
+    levels.js             — LEVELS, computeStars() (accuracy-based), isLevelUnlocked()
+    skills.js             — SKILLS: Rhythm/Technique/Theory tiers (musical progression)
 ```
 
 ---
@@ -121,4 +164,4 @@ src/
 - `REF_AUDIO.md`, `REF_BACKEND.md`, `REF_GAMECORE.md` — Reference docs
 
 ## Current phase
-**Late Phase 1C → entering Phase 1D (Polish + multi-level/skill tree foundation)**
+**Phase 1D — Instrument select, musical scoring, musical skill tree**
