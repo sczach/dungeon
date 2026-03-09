@@ -37,6 +37,8 @@ import { CueSystem }             from './systems/cueSystem.js';
 import { PromptManager }         from './systems/prompts.js';
 import { loadProgress, saveProgress, awardStars, applySkills } from './systems/progression.js';
 import { LEVELS, LEVELS_BY_ID, computeStars } from './data/levels.js';
+import { generateMelody, playMelody, stopMelody } from './audio/melodyEngine.js';
+import { applyLesson }                             from './data/lessons.js';
 
 // Re-export SCENE for callers that import from game.js
 export { SCENE };
@@ -165,6 +167,13 @@ function createInitialState() {
     starsEarned:    0,       // 0–3, computed at VICTORY
     noteAccuracy:   100,     // 0–100 note accuracy % for this run (set at VICTORY)
 
+    // ── Lesson (level-as-lesson content system) ────────────────────────────
+    currentLesson:  null,    // LessonConfig | null — applied by applyLesson() in startGame()
+    chordPlayCounts:{},      // map of chord root → play count (Level 3 success metric)
+
+    // ── Victory melody ─────────────────────────────────────────────────────
+    victoryMelody:  null,    // MelodyResult | null — generated at VICTORY, played on screen
+
     // ── Skill buff fields (reset + applied by applySkills()) ─────────────────
     skillSummonCooldownBonus:  0,
     skillBaseHpBonus:          0,
@@ -173,6 +182,13 @@ function createInitialState() {
     skillUnitDamageMult:       1.0,
     skillComboDoubleMilestone: false,
     skillSpawnIntervalBonus:   0,
+    // Musical progression skill fields (Tier I–III)
+    skillTimingWindowMult:     1.0,
+    skillChordMemory:          false,
+    skillRhythmReading:        false,
+    skillUnlockMage:           false,
+    skillSightReading:         false,
+    skillTempoMaster:          false,
   };
 }
 
@@ -228,6 +244,101 @@ const cueSystem            = new CueSystem();
 // Scene management
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Victory melody — piano-roll visualiser
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Rough frequency lookup for piano-roll Y positioning.
+ * Duplicated from melodyEngine to avoid a circular reference.
+ * @type {Object.<string, number>}
+ */
+const _VFREQ = {
+  'C3':130.81,'D3':146.83,'E3':164.81,'F3':174.61,'F#3':185.00,
+  'G3':196.00,'A3':220.00,'B3':246.94,'C#4':277.18,'C4':261.63,
+  'D4':293.66,'E4':329.63,'F4':349.23,'F#4':369.99,'G4':392.00,
+  'A4':440.00,'B4':493.88,'C#5':554.37,'C5':523.25,'D5':587.33,'E5':659.25,
+};
+
+/**
+ * Draw a colour-coded piano-roll strip on the #victory-staff canvas.
+ * Notes are laid out left-to-right by time; vertical position encodes pitch.
+ * Higher pitch → lower y-position (top of canvas = highest note).
+ *
+ * @param {import('./audio/melodyEngine.js').MelodyResult} melody
+ */
+function drawMelodyPianoRoll(melody) {
+  const canvas = /** @type {HTMLCanvasElement|null} */ (document.getElementById('victory-staff'));
+  if (!canvas || !melody?.notes?.length) return;
+  const ctx2 = canvas.getContext('2d');
+  if (!ctx2) return;
+
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx2.clearRect(0, 0, W, H);
+
+  // Background
+  ctx2.fillStyle = '#080814';
+  ctx2.fillRect(0, 0, W, H);
+
+  // Staff lines (5 decorative lines)
+  ctx2.strokeStyle = '#1c1c30';
+  ctx2.lineWidth   = 1;
+  for (let i = 0; i < 5; i++) {
+    const y = H * 0.15 + i * (H * 0.70 / 4);
+    ctx2.beginPath();
+    ctx2.moveTo(0, y);
+    ctx2.lineTo(W, y);
+    ctx2.stroke();
+  }
+
+  // Compute bounds
+  const lastNote   = melody.notes[melody.notes.length - 1];
+  const totalBeats = lastNote.beat + lastNote.duration;
+  const pxPerBeat  = W / Math.max(totalBeats, 1);
+  const noteH      = Math.max(6, H * 0.13);
+  const pad        = 1;
+
+  // Pitch range for Y normalisation
+  const freqs  = melody.notes.map(n => _VFREQ[n.note] ?? 261.63);
+  const minF   = Math.min(...freqs);
+  const maxF   = Math.max(...freqs);
+  const fRange = Math.max(maxF - minF, 1);
+
+  for (let i = 0; i < melody.notes.length; i++) {
+    const n    = melody.notes[i];
+    const freq = _VFREQ[n.note] ?? 261.63;
+    const x    = n.beat * pxPerBeat + pad;
+    const w    = Math.max(4, n.duration * pxPerBeat - pad * 2);
+    // Higher freq → smaller y (towards top)
+    const yNorm = 1 - (freq - minF) / fRange;
+    const y     = yNorm * (H - noteH - 8) + 4;
+
+    // Colour gradient: low = blue-violet, mid = cyan, high = amber
+    const t  = (freq - minF) / fRange;
+    const r  = Math.round(60  + t * 172);
+    const g  = Math.round(120 + (t < 0.5 ? t * 120 : (1 - t) * 120));
+    const b  = Math.round(220 - t * 140);
+    ctx2.fillStyle = `rgb(${r},${g},${b})`;
+
+    // Rounded rect (manual, compatible with older engines)
+    const radius = Math.min(3, noteH / 2, w / 2);
+    ctx2.beginPath();
+    ctx2.moveTo(x + radius, y);
+    ctx2.lineTo(x + w - radius, y);
+    ctx2.arcTo(x + w, y,         x + w, y + noteH, radius);
+    ctx2.arcTo(x + w, y + noteH, x,     y + noteH, radius);
+    ctx2.arcTo(x,     y + noteH, x,     y,         radius);
+    ctx2.arcTo(x,     y,         x + w, y,         radius);
+    ctx2.closePath();
+    ctx2.fill();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scene management
+// ─────────────────────────────────────────────────────────────────────────────
+
 /** Apply scene change, update <body> data attribute, and clean up subsystems. */
 function setScene(scene) {
   // Stop keyboard when leaving PLAYING so pressed-key state doesn't bleed
@@ -269,6 +380,51 @@ function setScene(scene) {
     if (accEl) accEl.textContent = `Note accuracy: ${acc}%`;
     const scoreEl = document.getElementById('victory-score');
     if (scoreEl) scoreEl.textContent = `Score: ${state.score}`;
+
+    // ── Victory melody — generate, visualise, and play ──────────────────────
+    const levelIdx    = LEVELS.findIndex(l => l.id === state.currentLevel?.id);
+    const levelNumber = levelIdx >= 0 ? levelIdx + 1 : 1;
+    const melody      = generateMelody({
+      levelNumber,
+      bpm: state.currentLevel?.bpm ?? 100,
+    });
+    state.victoryMelody = melody;
+
+    // Show lesson title if present
+    const lessonEl = document.getElementById('victory-lesson');
+    if (lessonEl && state.currentLesson) {
+      lessonEl.textContent = `${state.currentLesson.title} — ${state.currentLesson.concept}`;
+      lessonEl.hidden = false;
+    } else if (lessonEl) {
+      lessonEl.hidden = true;
+    }
+
+    // Reveal melody view and draw piano roll
+    const melodyView = document.getElementById('victory-melody-view');
+    if (melodyView) melodyView.hidden = false;
+    drawMelodyPianoRoll(melody);
+
+    // Status line
+    const statusEl = document.getElementById('victory-melody-status');
+    if (statusEl) statusEl.textContent = `🎵 ${melody.keyName} — your level's melody`;
+
+    // Gate the navigation buttons until melody finishes + 3 s pause
+    const playAgainBtn = document.getElementById('btn-play-again-victory');
+    const continueBtn  = document.getElementById('btn-title-victory');
+    if (playAgainBtn) playAgainBtn.disabled = true;
+    if (continueBtn)  continueBtn.disabled  = true;
+
+    playMelody(melody).then(() => {
+      if (statusEl) statusEl.textContent = '✓ Ready — continue when you are';
+      setTimeout(() => {
+        if (playAgainBtn) playAgainBtn.disabled = false;
+        if (continueBtn)  continueBtn.disabled  = false;
+      }, 3000);
+    }).catch(() => {
+      // Web Audio unavailable — unlock buttons immediately
+      if (playAgainBtn) playAgainBtn.disabled = false;
+      if (continueBtn)  continueBtn.disabled  = false;
+    });
   }
 
   if (scene === SCENE.DEFEAT) {
@@ -371,6 +527,9 @@ function wireButtons() {
  *   Level to play. Defaults to the last selected level or Campfire.
  */
 function startGame(levelConfig) {
+  // Stop any victory-screen melody that may still be playing
+  stopMelody();
+
   // Resolve which level to use
   const level = levelConfig
     ?? state.currentLevel
@@ -433,6 +592,9 @@ function startGame(levelConfig) {
   baseInterval = baseInterval * (level.spawnMod ?? 1.0);
   state.enemySpawnInterval = baseInterval + (state.skillSpawnIntervalBonus || 0);
   state.enemySpawnTimer    = state.enemySpawnInterval;
+
+  // Attach level-as-lesson content (sets state.currentLesson)
+  applyLesson(state, level.id);
 
   // Initialise subsystems
   tablatureSystem.reset(state);

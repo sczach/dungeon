@@ -26,6 +26,35 @@ Keep the on-screen keyboard — it's critical for onboarding and testing.
 
 ---
 
+## Design Principles — Never Violate These
+
+> ChordWars is not a game with music in it. It is a music lesson that happens to have a game in it.
+
+1. **Instrument is the only controller.**
+   Every game action — summoning, attacking, winning — is a direct musical action.
+   There are no menus, buttons, or shortcuts that bypass playing music.
+
+2. **Failure never stops the music.**
+   Missing a note, losing HP, or dying should feel musical, not punishing.
+   The game continues even if the player plays poorly. The music never stops mid-phrase.
+
+3. **Every level teaches one musical concept.**
+   Level 1 = single notes. Level 2 = intervals. Level 3 = chords.
+   A player who completes all levels has learned real music theory.
+   Never put two concepts in one level.
+
+4. **Better music = better gameplay.**
+   Higher note accuracy → more stars → more skills → stronger army.
+   Playing musically is always mechanically optimal. There must never be a way
+   to win that doesn't also involve playing well.
+
+5. **Levels end on a musical arc, not just HP=0.**
+   Victory is declared when the musical phrase resolves AND the enemy is defeated.
+   The generated melody plays back at the end of each level — the level's musical arc
+   is what the player carries away, not just a win condition.
+
+---
+
 ## Scene flow
 ```
 TITLE
@@ -127,6 +156,7 @@ src/
     index.js              — startCapture(), updateAudio(), updateCalibration()
     chords.js             — chromagram + cosine-similarity chord matching
     analyzer.js, capture.js, pitch.js
+    melodyEngine.js       — procedural melody generator (generateMelody) + Web Audio playback
   entities/
     unit.js               — Unit class (player+enemy), tier stats, role AI
     enemy.js              — Enemy class
@@ -150,7 +180,8 @@ src/
   data/
     chords.js             — CHORD_DATA, CHORD_FALLBACK
     levels.js             — LEVELS, computeStars() (accuracy-based), isLevelUnlocked()
-    skills.js             — SKILLS: Rhythm/Technique/Theory tiers (musical progression)
+    lessons.js            — LESSONS: level-as-lesson content (concept, notes, success metrics)
+    skills.js             — SKILLS: Foundation/Technique/Mastery tiers (musical progression)
 ```
 
 ---
@@ -164,4 +195,4 @@ src/
 - `REF_AUDIO.md`, `REF_BACKEND.md`, `REF_GAMECORE.md` — Reference docs
 
 ## Current phase
-**Phase 1D — Instrument select, musical scoring, musical skill tree**
+**Phase 1E — Melody engine, level-as-lesson, musical progression skill tree**

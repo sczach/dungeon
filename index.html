@@ -85,6 +85,17 @@
       <div class="victory-stars" id="victory-stars"><!-- star icons injected by js --></div>
       <p id="victory-accuracy"></p>
       <p id="victory-score"></p>
+
+      <!-- Lesson title (what this level taught) -->
+      <p id="victory-lesson" hidden style="font-size:12px;color:#a09080;margin:4px 0 8px;font-style:italic;max-width:420px;text-align:center;"></p>
+
+      <!-- Melody playback view (shown after victory) -->
+      <div id="victory-melody-view" hidden style="margin:8px 0 12px;text-align:center;">
+        <canvas id="victory-staff" width="480" height="72"
+          style="border-radius:6px;display:block;margin:0 auto 6px;max-width:90vw;"></canvas>
+        <p id="victory-melody-status" style="font-size:12px;color:#e8a030;margin:0;min-height:18px;"></p>
+      </div>
+
       <button class="btn btn--primary" id="btn-play-again-victory">Play Again</button>
       <button class="btn btn--ghost"   id="btn-title-victory">Level Select</button>
     </section>

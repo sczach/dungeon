@@ -130,9 +130,22 @@ export function purchaseSkill(skillId, prog) {
     return { ok: false, reason: 'Already purchased' };
   }
 
+  // Single-skill prerequisite check
   if (skill.requires && !prog.purchased.includes(skill.requires)) {
     const req = SKILLS_BY_ID[skill.requires];
     return { ok: false, reason: `Requires "${req?.name ?? skill.requires}" first` };
+  }
+
+  // Tier-count prerequisite check (e.g. "must own 2 Tier-II skills")
+  if (skill.requiresTierCount) {
+    const { tier, count } = skill.requiresTierCount;
+    const ownedInTier = SKILLS
+      .filter(s => s.tier === tier)
+      .filter(s => prog.purchased.includes(s.id))
+      .length;
+    if (ownedInTier < count) {
+      return { ok: false, reason: `Requires ${count} Tier ${tier} skill${count > 1 ? 's' : ''} (have ${ownedInTier})` };
+    }
   }
 
   const available = totalStars(prog);
@@ -161,13 +174,20 @@ export function purchaseSkill(skillId, prog) {
  */
 export function applySkills(state, prog) {
   // Reset all skill-applied fields so replays start clean
-  state.skillSummonCooldownBonus = 0;
-  state.skillBaseHpBonus         = 0;
-  state.skillMaxUnitsBonus       = 0;
-  state.skillUnitHpMult          = 1.0;
-  state.skillUnitDamageMult      = 1.0;
+  state.skillSummonCooldownBonus  = 0;
+  state.skillBaseHpBonus          = 0;
+  state.skillMaxUnitsBonus        = 0;
+  state.skillUnitHpMult           = 1.0;
+  state.skillUnitDamageMult       = 1.0;
   state.skillComboDoubleMilestone = false;
-  state.skillSpawnIntervalBonus  = 0;
+  state.skillSpawnIntervalBonus   = 0;
+  // Tier I–III musical progression fields
+  state.skillTimingWindowMult     = 1.0;
+  state.skillChordMemory          = false;
+  state.skillRhythmReading        = false;
+  state.skillUnlockMage           = false;
+  state.skillSightReading         = false;
+  state.skillTempoMaster          = false;
 
   for (const id of prog.purchased) {
     const skill = SKILLS_BY_ID[id];
@@ -207,10 +227,20 @@ export function skillState(skillId, prog) {
 
   if (prog.purchased.includes(skillId)) return 'purchased';
 
-  // Check prerequisite
+  // Single-skill prerequisite
   if (skill.requires && !prog.purchased.includes(skill.requires)) return 'locked';
 
-  // Prereq met — check affordability
+  // Tier-count prerequisite
+  if (skill.requiresTierCount) {
+    const { tier, count } = skill.requiresTierCount;
+    const ownedInTier = SKILLS
+      .filter(s => s.tier === tier)
+      .filter(s => prog.purchased.includes(s.id))
+      .length;
+    if (ownedInTier < count) return 'locked';
+  }
+
+  // All prereqs met — check affordability
   return totalStars(prog) >= skill.cost ? 'available' : 'unaffordable';
 }
 
