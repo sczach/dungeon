@@ -38,15 +38,21 @@ const WHITE_KEYS  = ['H',  'J',  'K',  'L',  ';',  "'",  '↵'];
 const COMBO_MILESTONES = new Set([5, 10, 20]);
 
 /**
- * Determine which unit type to summon based on the first note's pitch.
- * Low notes (C3/D3) → Mage; Mid (E3/F3/G3) → Knight; High (A3/B3) → Archer.
+ * Determine which unit archetype to summon based on the first note's pitch.
+ *
+ *   C3 / D3  → TANK   — high HP, holds midfield, absorbs punishment
+ *   E3 / F3  → DPS    — fast charge, fragile, high single-target damage
+ *   G3 / A3  → RANGED — stops at 180 px range, retreats when flanked, fires orbs
+ *   B3       → MAGE   — stays near base, AOE pulse every 3 s, buffs allies
+ *
  * @param {string} note
- * @returns {'archer'|'knight'|'mage'}
+ * @returns {'tank'|'dps'|'ranged'|'mage'}
  */
 function noteToUnitType(note) {
-  if (note === 'C3' || note === 'D3') return 'mage';
-  if (note === 'E3' || note === 'F3' || note === 'G3') return 'knight';
-  return 'archer';
+  if (note === 'C3' || note === 'D3') return 'tank';
+  if (note === 'E3' || note === 'F3') return 'dps';
+  if (note === 'G3' || note === 'A3') return 'ranged';
+  return 'mage';  // B3 (fallback)
 }
 
 /** How long a correct (green) flash stays before the next note becomes active. */

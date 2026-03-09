@@ -7,27 +7,40 @@
  *   'player' — spawns near player base; role determines movement
  *   'enemy'  — spawns near enemy base; marches left toward player base
  *
- * PLAYER UNIT ROLES
- * ─────────────────
- *   'offensive' (Archer)
- *     Advances horizontally through lane centre toward enemy base.
- *     Drifts y toward lane centre.  Attacks enemies in range.
+ * PLAYER UNIT ARCHETYPES (role determines movement & combat)
+ * ───────────────────────────────────────────────────────────
+ *   'tank'
+ *     High HP, slow, low damage.  Marches to midfield (patrolAnchorX) then
+ *     holds position and attacks any enemy within attack range.
  *
- *   'defensive' (Knight)
- *     Spawns near player base.  Patrols ±80 px around anchor.
- *     Priority target: enemy with lowest x (closest to player base).
- *     Does NOT advance beyond anchor + 80 px.
+ *   'dps'
+ *     Low HP, fast, high damage.  Always charges the enemy base / nearest
+ *     enemy (same AI as old 'offensive' archer).
  *
- *   'swarm' (Mage ×3)
- *     Small unit (r=10, overridden by game.js).
- *     Seeks nearest enemy in full 2D.  Falls back to enemy base.
+ *   'ranged'
+ *     Medium HP.  Advances until 180 px from target, then stops and fires
+ *     hitscan shots (visual orb via pendingProjectile).  Retreats if an
+ *     enemy closes to within 60 px.
  *
- * TIER STATS
- * ──────────
+ *   'mage'
+ *     Low HP, stays near player base (patrols ±30 px around patrolAnchorX).
+ *     Every 3 s: AOE pulse that deals 15 dmg to all enemies within 120 px
+ *     AND grants +10 % damage for 2 s to nearby friendly units.
+ *
+ * LEGACY PLAYER ROLES (kept for backward-compat, mapped at spawn)
+ * ────────────────────────────────────────────────────────────────
+ *   'offensive'  → same AI as 'dps' (march + target)
+ *   'defensive'  → Knight patrol ±80 px, priority target = lowest-x enemy
+ *   'swarm'      → seeks nearest enemy in full 2D, falls back to enemy base
+ *
+ * ENEMY AI
+ *   All enemy units use the standard march-and-attack AI.
+ *
+ * TIER STATS (base values; archetypes override these at spawn)
+ * ────────────────────────────────────────────────────────────
  *   Tier 1 — 30 hp,  8 dmg, 60 px/s, 50 px range, 1.0 atk/s, r=12
  *   Tier 2 — 60 hp, 15 dmg, 45 px/s, 60 px range, 0.8 atk/s, r=16
  *   Tier 3 — 120 hp, 25 dmg, 35 px/s, 70 px range, 0.6 atk/s, r=20
- *   Swarm  — stats overridden in game.js after construction
  *
  * LANE CLAMPING
  * ─────────────
@@ -70,6 +83,10 @@ export class Unit {
       this.role = null;
       this.patrolAnchorX = x || 0;
       this.patrolAnchorY = y || 0;
+      this.pulseCooldown    = 0;
+      this.damageMultiplier = 1.0;
+      this.buffTimer        = 0;
+      this.pendingProjectile = null;
       return;
     }
 
@@ -96,18 +113,28 @@ export class Unit {
     this.stunned           = false;
     this.stunTimer         = 0;
 
-    /** Visual unit type for player units: 'archer' | 'knight' | 'mage' | null */
+    /** Visual unit type: 'tank'|'dps'|'ranged'|'mage'|'archer'|'knight'|null */
     this.unitType = null;
 
-    /** Movement role: 'offensive' | 'defensive' | 'swarm' | null (enemy) */
+    /** Movement role: 'tank'|'dps'|'ranged'|'mage'|'offensive'|'defensive'|'swarm'|null */
     this.role = null;
 
     /**
      * Patrol / lane anchor (set by game.js at spawn time).
-     * Defensive: patrol centre x; Offensive/Swarm: lane centre y.
+     * Tank: midfield hold x.  Mage: base-proximity x.  Others: lane centre y.
      */
     this.patrolAnchorX = x;
     this.patrolAnchorY = y;
+
+    // ── Archetype-specific fields ────────────────────────────────────────
+    /** Mage: seconds until next AOE pulse (initialised to 3 s at spawn). */
+    this.pulseCooldown    = 0;
+    /** Temporary damage multiplier from a mage buff (1.0 = none). */
+    this.damageMultiplier = 1.0;
+    /** Seconds remaining on the mage damage buff. */
+    this.buffTimer        = 0;
+    /** Ranged: visual projectile queued for game.js to push to state.projectiles. */
+    this.pendingProjectile = null;
   }
 
   /**
@@ -151,6 +178,15 @@ export class Unit {
   update(dt, allUnits, bases) {
     if (!this.alive) return;
 
+    // ── 0. Buff ticking — damage multiplier granted by mage aura ──────────
+    if (this.buffTimer > 0) {
+      this.buffTimer -= dt;
+      if (this.buffTimer <= 0) {
+        this.buffTimer        = 0;
+        this.damageMultiplier = 1.0;
+      }
+    }
+
     // ── 1. Stun: freeze entirely ──────────────────────────────────────────
     if (this.stunned) {
       this.marching = false;
@@ -162,26 +198,40 @@ export class Unit {
     const targetBase = this.team === 'player' ? bases.enemy : bases.player;
 
     // ── 2. Role-specific movement ─────────────────────────────────────────
-    if (this.team === 'player' && this.role === 'defensive') {
-      this._updateDefensive(dt, allUnits);
-    } else if (this.team === 'player' && this.role === 'swarm') {
-      this._updateSwarm(dt, allUnits, targetBase);
-    } else {
-      // Offensive player units and all enemies: standard march + target logic
-      this._updateMarcher(dt, allUnits, targetBase);
-
-      // Offensive player units drift y toward lane centre for clean advance
-      if (this.team === 'player' && this.role === 'offensive') {
-        const dy = this.patrolAnchorY - this.y;
-        if (Math.abs(dy) > 3) {
-          this.y += Math.sign(dy) * Math.min(Math.abs(dy), this.speed * 0.4 * dt);
-        }
+    if (this.team === 'player') {
+      switch (this.role) {
+        case 'tank':
+          this._updateTank(dt, allUnits);
+          break;
+        case 'ranged':
+          this._updateRanged(dt, allUnits, targetBase);
+          break;
+        case 'mage':
+          this._updateMage(dt, allUnits);
+          break;
+        case 'defensive':
+          this._updateDefensive(dt, allUnits);
+          break;
+        case 'swarm':
+          this._updateSwarm(dt, allUnits, targetBase);
+          break;
+        default:
+          // 'dps', 'offensive', or any unrecognised role: standard march
+          this._updateMarcher(dt, allUnits, targetBase);
+          // Drift y toward lane centre (keeps the advance lane clean)
+          if (this.role === 'dps' || this.role === 'offensive') {
+            const dy = this.patrolAnchorY - this.y;
+            if (Math.abs(dy) > 3) {
+              this.y += Math.sign(dy) * Math.min(Math.abs(dy), this.speed * 0.4 * dt);
+            }
+          }
       }
+    } else {
+      // Enemy: always march
+      this._updateMarcher(dt, allUnits, targetBase);
     }
 
     // ── 3. Lane y-clamping for all live units ─────────────────────────────
-    // Lane centre = bases.player.y = LANE_Y × H
-    // Half-height = laneCenter × (LANE_HEIGHT / LANE_Y) × 0.5
     if (bases.player) {
       const laneCenter = bases.player.y;
       const halfH      = laneCenter * (LANE_HEIGHT / LANE_Y) * 0.5;
@@ -195,12 +245,13 @@ export class Unit {
   // ── Private: standard march AI ───────────────────────────────────────────
 
   /**
-   * Default marching AI used by enemies and offensive player units.
+   * Default marching AI used by enemies and DPS/offensive player units.
    * Finds nearest target, steers toward it; falls back to marching at base.
    */
   _updateMarcher(dt, allUnits, targetBase) {
     const target = this.findTarget(allUnits, targetBase);
     const atkR2  = this.range * this.range;
+    const dmg    = Math.round(this.damage * (this.damageMultiplier ?? 1.0));
 
     if (target !== targetBase) {
       // Unit target: steer in 2D, attack when in range
@@ -211,7 +262,7 @@ export class Unit {
       if (d2 <= atkR2) {
         this.marching = false;
         if (this.attackCooldown <= 0) {
-          target.hp -= this.damage;
+          target.hp -= dmg;
           if (target.hp <= 0) target.alive = false;
           this.attackCooldown = 1 / this.attackSpeed;
         }
@@ -241,6 +292,162 @@ export class Unit {
     }
   }
 
+  // ── Private: tank AI ─────────────────────────────────────────────────────
+
+  /**
+   * Tank role: marches to midfield (patrolAnchorX), then holds and attacks
+   * any enemy within attack range.  Never advances beyond patrolAnchorX.
+   */
+  _updateTank(dt, allUnits) {
+    const atkR2 = this.range * this.range;
+    const midX  = this.patrolAnchorX;
+    const dmg   = Math.round(this.damage * (this.damageMultiplier ?? 1.0));
+
+    // Find nearest enemy within attack range
+    let nearestEnemy = null;
+    let nearestDist2 = atkR2 + 1;
+    for (let i = 0; i < allUnits.length; i++) {
+      const u = allUnits[i];
+      if (!u.alive || u.team === this.team) continue;
+      const dx = u.x - this.x;
+      const dy = u.y - this.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= atkR2 && d2 < nearestDist2) { nearestDist2 = d2; nearestEnemy = u; }
+    }
+
+    if (nearestEnemy) {
+      this.marching = false;
+      if (this.attackCooldown <= 0) {
+        nearestEnemy.hp -= dmg;
+        if (nearestEnemy.hp <= 0) nearestEnemy.alive = false;
+        this.attackCooldown = 1 / this.attackSpeed;
+      }
+    } else if (this.x < midX - 4) {
+      // March to midfield
+      this.marching = true;
+      this.x += this.speed * dt;
+    } else {
+      // Hold at midfield
+      this.marching = false;
+      if (this.x > midX) this.x = midX;
+    }
+  }
+
+  // ── Private: ranged AI ───────────────────────────────────────────────────
+
+  /**
+   * Ranged role: advances until within this.range of the target, then holds
+   * and fires hitscan shots (a visual-only projectile is queued in
+   * this.pendingProjectile for game.js to collect).
+   * If an enemy closes to within RETREAT_DIST, the unit retreats.
+   */
+  _updateRanged(dt, allUnits, targetBase) {
+    const RETREAT_DIST = 60;
+    const retR2        = RETREAT_DIST * RETREAT_DIST;
+    const atkR2        = this.range * this.range;
+    const dmg          = Math.round(this.damage * (this.damageMultiplier ?? 1.0));
+
+    // Find nearest enemy unit (full scan, no lock-on limit)
+    let nearest   = null;
+    let nearestD2 = Infinity;
+    for (let i = 0; i < allUnits.length; i++) {
+      const u = allUnits[i];
+      if (!u.alive || u.team === this.team) continue;
+      const dx = u.x - this.x;
+      const dy = u.y - this.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < nearestD2) { nearestD2 = d2; nearest = u; }
+    }
+
+    const target = nearest ?? targetBase;
+    const dx     = target.x - this.x;
+    const dy     = target.y - this.y;
+    const d2     = dx * dx + dy * dy;
+
+    if (nearest && d2 <= retR2) {
+      // Retreat — too close, back away
+      this.marching = true;
+      const dist    = Math.sqrt(d2) || 1;
+      this.x       -= (dx / dist) * this.speed * dt;
+      this.y       -= (dy / dist) * this.speed * dt;
+
+    } else if (d2 <= atkR2) {
+      // In firing range — hold and shoot
+      this.marching = false;
+      if (this.attackCooldown <= 0) {
+        if (target === targetBase) {
+          targetBase.takeDamage(dmg);
+        } else {
+          target.hp -= dmg;
+          if (target.hp <= 0) target.alive = false;
+          // Queue visual projectile (game.js moves it to state.projectiles)
+          this.pendingProjectile = {
+            x: this.x, y: this.y,
+            tx: target.x, ty: target.y,
+            startTime: performance.now(),
+            travelTime: 250,
+            team: 'player',
+          };
+        }
+        this.attackCooldown = 1 / this.attackSpeed;
+      }
+
+    } else {
+      // Advance toward target
+      this.marching = true;
+      const dist    = Math.sqrt(d2) || 1;
+      this.x       += (dx / dist) * this.speed * dt;
+      this.y       += (dy / dist) * this.speed * dt;
+    }
+  }
+
+  // ── Private: mage AI ─────────────────────────────────────────────────────
+
+  /**
+   * Mage role: patrols near the player base (±30 px from patrolAnchorX).
+   * Every 3 seconds triggers an AOE pulse:
+   *   - 15 damage to all enemies within 120 px
+   *   - +10 % damage buff for 2 s to all nearby friendly units
+   */
+  _updateMage(dt, allUnits) {
+    const AOE_RADIUS = 120;
+    const AOE_R2     = AOE_RADIUS * AOE_RADIUS;
+    const AOE_DAMAGE = 15;
+
+    // Tick pulse cooldown
+    if (this.pulseCooldown > 0) this.pulseCooldown -= dt;
+
+    // Patrol near anchor (slow return to anchor x)
+    const dist = this.patrolAnchorX - this.x;
+    if (Math.abs(dist) > 5) {
+      this.marching = true;
+      this.x += Math.sign(dist) * this.speed * dt;
+    } else {
+      this.marching = false;
+    }
+
+    // AOE pulse
+    if (this.pulseCooldown <= 0) {
+      this.pulseCooldown = 3.0;
+      for (let i = 0; i < allUnits.length; i++) {
+        const u = allUnits[i];
+        if (!u.alive) continue;
+        const ex = u.x - this.x;
+        const ey = u.y - this.y;
+        if (ex * ex + ey * ey > AOE_R2) continue;
+        if (u.team !== this.team) {
+          // Damage enemies
+          u.hp -= AOE_DAMAGE;
+          if (u.hp <= 0) u.alive = false;
+        } else if (u !== this) {
+          // Buff friendly units: +10 % damage for 2 s
+          u.damageMultiplier = 1.1;
+          u.buffTimer        = 2.0;
+        }
+      }
+    }
+  }
+
   // ── Private: defensive (Knight) AI ───────────────────────────────────────
 
   /**
@@ -255,6 +462,7 @@ export class Unit {
     const atkR2 = this.range * this.range;
     const detR  = this.range * 2.5;
     const detR2 = detR * detR;
+    const dmg   = Math.round(this.damage * (this.damageMultiplier ?? 1.0));
 
     // Find the enemy closest to the player base (lowest x)
     let bestTarget = null;
@@ -274,7 +482,7 @@ export class Unit {
         // In attack range: hold and attack
         this.marching = false;
         if (this.attackCooldown <= 0) {
-          bestTarget.hp -= this.damage;
+          bestTarget.hp -= dmg;
           if (bestTarget.hp <= 0) bestTarget.alive = false;
           this.attackCooldown = 1 / this.attackSpeed;
         }
@@ -297,12 +505,14 @@ export class Unit {
     }
   }
 
-  // ── Private: swarm (Mage ×3) AI ──────────────────────────────────────────
+  // ── Private: swarm (legacy Mage ×3) AI ───────────────────────────────────
 
   /**
    * Swarm role: seeks nearest enemy in unrestricted 2D; falls back to enemy base.
    */
   _updateSwarm(dt, allUnits, targetBase) {
+    const dmg = Math.round(this.damage * (this.damageMultiplier ?? 1.0));
+
     // Seek nearest enemy (any range — no lock-on threshold)
     let nearest   = null;
     let nearestD2 = Infinity;
@@ -327,7 +537,7 @@ export class Unit {
         if (target === targetBase) {
           targetBase.takeDamage(this.damage);
         } else {
-          target.hp -= this.damage;
+          target.hp -= dmg;
           if (target.hp <= 0) target.alive = false;
         }
         this.attackCooldown = 1 / this.attackSpeed;

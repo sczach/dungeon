@@ -74,7 +74,7 @@ function createInitialState() {
       blocked:           false, // true when resource check failed (drives red flash)
       blockedTime:       0,     // performance.now() when blocked was set
       sequenceDoneTime:  0,     // performance.now() when all 3 notes completed; 0 = not done
-      unitType:          'archer', // set from first note of sequence: 'archer'|'knight'|'mage'
+      unitType:          'dps',    // set from first note of sequence: 'tank'|'dps'|'ranged'|'mage'
     },
 
     // ── Audio (written by audio subsystem + keyboard layer) ──
@@ -97,6 +97,7 @@ function createInitialState() {
     units: [],               // Unit[] — both player and enemy units
     lightningBolts: [],      // {x1,y1,x2,y2,startTime,duration,segments}[] — active bolt animations
     attackMisses:   0,       // notes pressed in ATTACK mode with no enemy match (accuracy tracking)
+    projectiles:    [],      // {x,y,tx,ty,startTime,travelTime,team}[] — ranged unit shot visuals
 
     // ── Mode & settings ───────────────────────
     inputMode:       'summon',   // 'summon' | 'attack' — toggled by Space
@@ -463,41 +464,94 @@ function spawnEnemyUnit() {
  *
  * @param {1|2|3}       tier
  * @param {boolean}     [free=false]      — skip resource check/deduction
- * @param {string|null} [unitType=null]   — 'archer'|'knight'|'mage'|null
- * @param {number}      [swarmOffset=0]   — 0/1/2 spread index for mage swarm units
+ * @param {string|null} [unitType=null] — 'tank'|'dps'|'ranged'|'mage'|null
  */
-function spawnPlayerUnit(tier, free = false, unitType = null, swarmOffset = 0) {
+function spawnPlayerUnit(tier, free = false, unitType = null) {
   const COST = [0, 20, 50, 100];
   const cost = free ? 0 : COST[tier];
   if (state.resources < cost) return;
   if (!free) state.resources -= cost;
 
-  const W           = state.canvas.width;
-  const H           = state.canvas.height;
-  const laneCenter  = LANE_Y * H;
-  const halfLane    = LANE_HEIGHT * H * 0.5;
-  const laneTop     = laneCenter - halfLane;
-  const laneBot     = laneCenter + halfLane;
+  const W          = state.canvas.width;
+  const H          = state.canvas.height;
+  const laneCenter = LANE_Y * H;
+  const halfLane   = LANE_HEIGHT * H * 0.5;
+  const laneTop    = laneCenter - halfLane;
+  const laneBot    = laneCenter + halfLane;
 
-  const isKnight = unitType === 'knight';
-  const isMage   = unitType === 'mage';
+  // Mages spawn right beside the player base so they can safely patrol there
+  const isMage = unitType === 'mage';
+  const x      = isMage
+    ? (PLAYER_BASE_X + BASE_WIDTH + 0.01) * W     // mage: hugs base
+    : (PLAYER_BASE_X + BASE_WIDTH) * W + 20;      // others: base edge
 
-  // Spawn x — knights guard near the player base; others appear just right of it
-  const x = isKnight
-    ? (PLAYER_BASE_X + BASE_WIDTH + 0.025) * W   // defensive: close to base
-    : (PLAYER_BASE_X + BASE_WIDTH) * W + 20;     // offensive / swarm: base edge
-
-  // Spawn y — mage units spread in a vertical cluster; others near lane centre
-  const rawY = isMage
-    ? laneCenter + (swarmOffset - 1) * 22          // offsets: −22, 0, +22 px
-    : laneCenter + (Math.random() * 2 - 1) * 20;
-
-  const radius = isMage ? 10 : [0, 12, 16, 20][tier];
+  const rawY   = laneCenter + (Math.random() * 2 - 1) * 20;
+  const radius = [0, 12, 16, 20][tier] ?? 12;
   const y      = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
 
   const unit = new Unit('player', tier, x, y);
 
-  // Apply skill HP and damage multipliers to player units
+  // ── Archetype stat overrides ───────────────────────────────────────────
+  // Each archetype replaces the generic tier stats with role-appropriate values.
+  switch (unitType) {
+    case 'tank':
+      unit.hp = unit.maxHp = 200;
+      unit.damage      = 6;
+      unit.speed       = 40;
+      unit.range       = 60;
+      unit.attackSpeed = 0.7;
+      unit.radius      = 20;
+      unit.role        = 'tank';
+      // patrolAnchorX = midfield (45 % of canvas width)
+      unit.patrolAnchorX = W * 0.45;
+      unit.patrolAnchorY = laneCenter;
+      break;
+
+    case 'dps':
+      unit.hp = unit.maxHp = 25;
+      unit.damage      = 20;
+      unit.speed       = 100;
+      unit.range       = 50;
+      unit.attackSpeed = 1.5;
+      unit.radius      = 10;
+      unit.role        = 'dps';
+      unit.patrolAnchorX = x;
+      unit.patrolAnchorY = laneCenter;
+      break;
+
+    case 'ranged':
+      unit.hp = unit.maxHp = 40;
+      unit.damage      = 12;
+      unit.speed       = 70;
+      unit.range       = 180;
+      unit.attackSpeed = 0.8;
+      unit.radius      = 12;
+      unit.role        = 'ranged';
+      unit.patrolAnchorX = x;
+      unit.patrolAnchorY = laneCenter;
+      break;
+
+    case 'mage':
+      unit.hp = unit.maxHp = 50;
+      unit.damage        = 8;
+      unit.speed         = 30;
+      unit.range         = 120;
+      unit.attackSpeed   = 1.0;
+      unit.radius        = 14;
+      unit.role          = 'mage';
+      unit.pulseCooldown = 1.5;      // first pulse at 1.5 s (sooner than 3 s repeat)
+      unit.patrolAnchorX = x;
+      unit.patrolAnchorY = laneCenter;
+      break;
+
+    default:
+      // Legacy fallback — offensive archer stats from tier table
+      unit.role          = 'offensive';
+      unit.patrolAnchorX = x;
+      unit.patrolAnchorY = laneCenter;
+  }
+
+  // ── Apply skill multipliers (after archetype override so they stack) ───
   if (state.skillUnitHpMult && state.skillUnitHpMult !== 1.0) {
     unit.hp    = Math.round(unit.hp    * state.skillUnitHpMult);
     unit.maxHp = Math.round(unit.maxHp * state.skillUnitHpMult);
@@ -506,24 +560,7 @@ function spawnPlayerUnit(tier, free = false, unitType = null, swarmOffset = 0) {
     unit.damage = Math.round(unit.damage * state.skillUnitDamageMult);
   }
 
-  // Visual type
   if (unitType) unit.unitType = unitType;
-
-  // Movement role + patrol anchor
-  unit.role          = isKnight ? 'defensive' : isMage ? 'swarm' : 'offensive';
-  unit.patrolAnchorX = x;
-  unit.patrolAnchorY = laneCenter;   // lane centre — used for y-drift by offensive
-
-  // Swarm (mage) stat overrides — small, fast, fragile
-  if (isMage) {
-    unit.radius      = 10;
-    unit.hp          = 15;
-    unit.maxHp       = 15;
-    unit.damage      = 5;
-    unit.speed       = 85;
-    unit.attackSpeed = 1.5;
-    unit.range       = 45;
-  }
 
   state.units.push(unit);
 }
@@ -585,6 +622,13 @@ function update(dt) {
             state.lightningBolts.splice(bi, 1);
           }
         }
+        // Ranged-unit projectile cleanup (remove arrived orbs)
+        for (let pi = state.projectiles.length - 1; pi >= 0; pi--) {
+          const p = state.projectiles[pi];
+          if (nowMs - p.startTime >= p.travelTime) {
+            state.projectiles.splice(pi, 1);
+          }
+        }
       }
       // No resource auto-tick — resources earned from kills only
 
@@ -621,21 +665,29 @@ function update(dt) {
       if (state.tablature.pendingSpawn !== null) {
         const now        = performance.now();
         const tier       = state.tablature.pendingSpawn;
-        const unitType   = state.tablature.unitType || 'archer';
+        const unitType   = state.tablature.unitType || 'dps';
         const SUMMON_COST = [0, 50, 75, 100];
         const cost       = SUMMON_COST[tier] ?? 50;
-        // Mage spawns 3 swarm units for the same resource cost
-        const spawnCount = (unitType === 'mage') ? 3 : 1;
+        // All archetypes spawn as a single unit (mage is no longer a swarm)
+        const MAX_PLAYER = 8 + (state.skillMaxUnitsBonus || 0);
+
+        let playerCount = 0;
+        for (let pu = 0; pu < state.units.length; pu++) {
+          if (state.units[pu].team === 'player') playerCount++;
+        }
 
         if (now < (state.summonCooldownEnd || 0)) {
           // Top-level cooldown still active — silently discard
           console.log(`[summon] top-level cooldown active, discarding pendingSpawn`);
+        } else if (playerCount >= MAX_PLAYER) {
+          // Unit cap reached — block but let combo continue
+          state.tablature.blocked     = true;
+          state.tablature.blockedTime = now;
+          console.log(`[summon] blocked: unit cap ${MAX_PLAYER}`);
         } else if (state.resources >= cost) {
           state.resources        -= cost;
           state.summonCooldownEnd = now + 500;   // 500 ms top-level gate
-          for (let si = 0; si < spawnCount; si++) {
-            spawnPlayerUnit(tier, true, unitType, si);
-          }
+          spawnPlayerUnit(tier, true, unitType);
           console.log(`SPAWN: ${unitType} cost:${cost} resources:${Math.floor(state.resources)}`);
         } else {
           // Trigger red-flash on summon bar
@@ -681,6 +733,11 @@ function update(dt) {
           continue;
         }
         u.update(dt, state.units, bases);
+        // Collect ranged-unit projectile visuals
+        if (u.pendingProjectile) {
+          state.projectiles.push(u.pendingProjectile);
+          u.pendingProjectile = null;
+        }
       }
 
       // ── Win / lose ────────────────────────────────────────────────────────

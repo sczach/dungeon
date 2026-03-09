@@ -193,6 +193,7 @@ export class Renderer {
     this._drawBases(state, W, H);
     this._drawUnits(state);
     this._drawLightningBolts(state, W, H);
+    this._drawProjectiles(state);
     this._drawEnemySequences(state, W, H);
     this._drawTablature(state, W, H);       // top-of-screen summon prompt (above map)
     this._drawWaveAnnouncement(state, W, H);
@@ -610,15 +611,101 @@ export class Renderer {
     ctx.fillText(String(tier), unit.x, unit.y);
   }
 
-  /** Draw unit-type-specific player body. Called inside ctx.save()/restore(). */
-  _drawPlayerBody(ctx, unit, r) {
-    const type = unit.unitType || 'archer';
+  /**
+   * Draw unit-type-specific player body.  Called inside ctx.save()/restore().
+   * Supports the four new archetypes: tank / dps / ranged / mage.
+   * Legacy types (archer, knight) fall through to a blue-circle default.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {import('../entities/unit.js').Unit} unit
+   * @param {number} r   — logical radius
+   * @param {number} t   — state.time (seconds, for pulsing animations)
+   */
+  _drawPlayerBody(ctx, unit, r, t) {
+    const type = unit.unitType || 'dps';
+    const x    = unit.x;
+    const y    = unit.y;
 
-    if (type === 'knight') {
-      // Diamond (rotated square)
+    // ── Per-archetype body ────────────────────────────────────────────────
+    if (type === 'tank') {
+      // Gold circle, thick border, slow heartbeat pulse
+      const vr = r * (1 + 0.025 * Math.sin(t * Math.PI));
+      ctx.beginPath();
+      ctx.arc(x, y, vr, 0, Math.PI * 2);
+      ctx.fillStyle   = '#7a5510';
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth   = 3;
+      ctx.fill();
+      ctx.stroke();
+      // Cross / shield mark
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, y - r * 0.45); ctx.lineTo(x, y + r * 0.5);
+      ctx.moveTo(x - r * 0.38, y - r * 0.1); ctx.lineTo(x + r * 0.38, y - r * 0.1);
+      ctx.stroke();
+
+    } else if (type === 'dps') {
+      // Small red/orange circle, fast pulse
+      const vr = r * (1 + 0.07 * Math.sin(t * Math.PI * 3));
+      ctx.beginPath();
+      ctx.arc(x, y, vr, 0, Math.PI * 2);
+      ctx.fillStyle   = '#aa2200';
+      ctx.strokeStyle = '#ff6633';
+      ctx.lineWidth   = 2;
+      ctx.fill();
+      ctx.stroke();
+      // Speed-slash marks
+      ctx.strokeStyle = '#ff9955';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.42, y - r * 0.25); ctx.lineTo(x + r * 0.18, y - r * 0.25);
+      ctx.moveTo(x - r * 0.18, y + r * 0.25); ctx.lineTo(x + r * 0.42, y + r * 0.25);
+      ctx.stroke();
+
+    } else if (type === 'ranged') {
+      // Teal/cyan circle with crosshair lines
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle   = '#0a3844';
+      ctx.strokeStyle = '#44ccff';
+      ctx.lineWidth   = 2;
+      ctx.fill();
+      ctx.stroke();
+      // Crosshair outside the circle
+      ctx.strokeStyle = '#44ccff';
+      ctx.lineWidth   = 1.5;
+      const gap = r + 3, ext = r + 9;
+      ctx.beginPath();
+      ctx.moveTo(x - ext, y); ctx.lineTo(x - gap, y);
+      ctx.moveTo(x + gap, y); ctx.lineTo(x + ext, y);
+      ctx.moveTo(x, y - ext); ctx.lineTo(x, y - gap);
+      ctx.moveTo(x, y + gap); ctx.lineTo(x, y + ext);
+      ctx.stroke();
+
+    } else if (type === 'mage') {
+      // Purple glow circle + faint AOE radius ring
+      ctx.shadowBlur  = 14;
+      ctx.shadowColor = '#aa44ff';
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle   = '#320055';
+      ctx.strokeStyle = '#aa44ff';
+      ctx.lineWidth   = 2.5;
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      // Faint AOE range indicator (120 px)
+      ctx.beginPath();
+      ctx.arc(x, y, 120, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(170, 68, 255, 0.10)';
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+
+    } else if (type === 'knight') {
+      // Legacy diamond shape
       const hw = r * 1.05;
       ctx.save();
-      ctx.translate(unit.x, unit.y);
+      ctx.translate(x, y);
       ctx.rotate(Math.PI / 4);
       ctx.fillStyle   = '#2255cc';
       ctx.strokeStyle = '#aac8ff';
@@ -626,45 +713,36 @@ export class Renderer {
       ctx.fillRect(-hw, -hw, hw * 2, hw * 2);
       ctx.strokeRect(-hw, -hw, hw * 2, hw * 2);
       ctx.restore();
-    } else if (type === 'mage') {
-      // Blue circle with purple glow ring
-      ctx.shadowBlur  = 10;
-      ctx.shadowColor = '#8855ff';
-      ctx.beginPath();
-      ctx.arc(unit.x, unit.y, r + 5, 0, Math.PI * 2);
-      ctx.strokeStyle = '#8855ff';
-      ctx.lineWidth   = 2.5;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
 
-      ctx.beginPath();
-      ctx.arc(unit.x, unit.y, r, 0, Math.PI * 2);
-      ctx.fillStyle   = '#2233aa';
-      ctx.strokeStyle = '#aac8ff';
-      ctx.lineWidth   = 2;
-      ctx.fill();
-      ctx.stroke();
     } else {
-      // Archer — plain blue circle (default)
+      // Archer / fallback — plain blue circle
       ctx.beginPath();
-      ctx.arc(unit.x, unit.y, r, 0, Math.PI * 2);
-      ctx.fillStyle   = '#5b8fff';
-      ctx.strokeStyle = '#aac8ff';
-      ctx.lineWidth   = 2;
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle   = TEAM_COLOUR.player;
+      ctx.strokeStyle = TEAM_STROKE.player;
+      ctx.lineWidth   = 1.5;
       ctx.fill();
       ctx.stroke();
     }
 
-    // Type letter label
-    const label = type === 'mage' ? 'M' : type === 'knight' ? 'K' : 'A';
+    // ── Mage buff indicator — golden ring when damageMultiplier is active ─
+    if (unit.buffTimer > 0) {
+      ctx.beginPath();
+      ctx.arc(x, y, r + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 215, 0, 0.75)';
+      ctx.lineWidth   = 2;
+      ctx.stroke();
+    }
+
+    // ── Label (single letter) ─────────────────────────────────────────────
+    const LABELS = { tank: 'T', dps: 'D', ranged: 'R', mage: 'M', knight: 'K', archer: 'A' };
     ctx.font         = `bold ${Math.max(8, r * 0.75)}px Georgia, serif`;
     ctx.fillStyle    = 'rgba(255,255,255,0.9)';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, unit.x, unit.y);
+    ctx.fillText(LABELS[type] ?? '?', x, y);
   }
 
-  // ─────────────────────────────────────────
   // ─────────────────────────────────────────
   // Lightning bolts (direct attack visuals)
   // ─────────────────────────────────────────
@@ -730,6 +808,38 @@ export class Renderer {
       ctx.shadowBlur  = 0;
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  // ─────────────────────────────────────────
+  // Ranged unit projectiles
+  // ─────────────────────────────────────────
+
+  /**
+   * Animate ranged-unit shot orbs from their launch position to their target.
+   * Each projectile is a visual-only arc — damage was applied hitscan when the
+   * shot was queued.  Orbs are removed by game.js once travelTime elapses.
+   * @param {object} state
+   */
+  _drawProjectiles(state) {
+    const projs = state.projectiles;
+    if (!projs || projs.length === 0) return;
+    const ctx = this.ctx;
+    const now = performance.now();
+    ctx.save();
+    for (let i = 0; i < projs.length; i++) {
+      const p = projs[i];
+      const t = Math.min(1.0, (now - p.startTime) / p.travelTime);
+      const x = p.x + (p.tx - p.x) * t;
+      const y = p.y + (p.ty - p.y) * t;
+      ctx.shadowBlur  = 12;
+      ctx.shadowColor = 'rgba(68, 200, 255, 0.9)';
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#44ccff';
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
     ctx.restore();
   }
 
