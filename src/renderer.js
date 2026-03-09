@@ -199,6 +199,7 @@ export class Renderer {
     this._drawWaveAnnouncement(state, W, H);
     this._drawPhaseAnnouncement(state, W, H);
     this._drawPhaseLabel(state, W, H);
+    this._drawCueCard(state, W, H);
     this._drawModeAnnouncement(state, W, H);
     renderHUD(this.ctx, state, W, H);
   }
@@ -1051,6 +1052,105 @@ export class Renderer {
       ctx.fillStyle = 'rgba(255,180,60,0.8)';
       ctx.fillText('Base invulnerable', W - 12, 30);
     }
+    ctx.restore();
+  }
+
+  /**
+   * Cue card — top-right panel showing the active timed note cue.
+   * Green flash on hit, red pulse on missed, amber timer bar shrinks to zero.
+   * Hidden when no cue is active.
+   *
+   * @param {object} state
+   * @param {number} W @param {number} H
+   */
+  _drawCueCard(state, W, H) {   // eslint-disable-line no-unused-vars
+    const cue = state.currentCue;
+    if (!cue) return;
+
+    const ctx     = this.ctx;
+    const now     = performance.now();
+    const CARD_W  = 130;
+    const CARD_H  = 64;
+    const CARD_X  = W - CARD_W - 14;
+    const CARD_Y  = 44;  // below the phase label line
+
+    const elapsed  = now - cue.startTime;
+    const window   = cue.deadline - cue.startTime;
+    const progress = Math.max(0, 1 - elapsed / window);  // 1.0 → 0.0
+
+    // Card background colour by status
+    let bgColor;
+    if (cue.status === 'hit') {
+      bgColor = 'rgba(30, 120, 50, 0.92)';
+    } else if (cue.status === 'missed') {
+      bgColor = 'rgba(120, 20, 20, 0.82)';
+    } else {
+      // Active — subtle pulse
+      const pulse = 0.85 + 0.08 * Math.sin(now / 200);
+      bgColor = `rgba(20, 20, 40, ${pulse.toFixed(2)})`;
+    }
+
+    ctx.save();
+
+    // Card body
+    ctx.fillStyle   = bgColor;
+    ctx.strokeStyle = cue.status === 'hit'    ? '#44ff88'
+                    : cue.status === 'missed' ? '#ff5544'
+                    : CLR.ACCENT;
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    ctx.roundRect?.(CARD_X, CARD_Y, CARD_W, CARD_H, 8) ??
+      ctx.rect(CARD_X, CARD_Y, CARD_W, CARD_H);
+    ctx.fill();
+    ctx.stroke();
+
+    // "♪ Play" label
+    ctx.fillStyle    = 'rgba(240,234,214,0.6)';
+    ctx.font         = '11px Georgia, serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('♪ Play', CARD_X + CARD_W / 2, CARD_Y + 6);
+
+    // Note name — large
+    ctx.fillStyle    = cue.status === 'hit' ? '#88ffaa' : CLR.TEXT;
+    ctx.font         = `bold 22px Georgia, serif`;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(cue.note, CARD_X + CARD_W * 0.42, CARD_Y + CARD_H * 0.52);
+
+    // Key label — right side
+    const NOTE_TO_KEY_MAP = {
+      'C3': 'H', 'D3': 'J', 'E3': 'K', 'F3': 'L',
+      'G3': ';', 'A3': "'", 'B3': '↵',
+    };
+    const keyLabel = NOTE_TO_KEY_MAP[cue.note] ?? '?';
+    ctx.font         = 'bold 16px Georgia, serif';
+    ctx.fillStyle    = CLR.ACCENT;
+    ctx.textAlign    = 'center';
+    ctx.fillText(`[${keyLabel}]`, CARD_X + CARD_W * 0.78, CARD_Y + CARD_H * 0.52);
+
+    // Status / result text
+    if (cue.status === 'hit') {
+      ctx.font      = 'bold 11px Georgia, serif';
+      ctx.fillStyle = '#44ff88';
+      ctx.fillText('+10', CARD_X + CARD_W / 2, CARD_Y + CARD_H - 9);
+    } else if (cue.status === 'missed') {
+      ctx.font      = '11px Georgia, serif';
+      ctx.fillStyle = '#ff8888';
+      ctx.fillText('missed', CARD_X + CARD_W / 2, CARD_Y + CARD_H - 9);
+    } else {
+      // Timing bar — shrinks as deadline approaches
+      const BAR_H   = 5;
+      const BAR_Y   = CARD_Y + CARD_H - BAR_H - 4;
+      const BAR_PAD = 8;
+      const maxW    = CARD_W - BAR_PAD * 2;
+      const barW    = maxW * progress;
+      const barClr  = progress > 0.5 ? '#44ff88' : progress > 0.25 ? '#ffcc00' : '#ff4444';
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(CARD_X + BAR_PAD, BAR_Y, maxW, BAR_H);
+      ctx.fillStyle = barClr;
+      ctx.fillRect(CARD_X + BAR_PAD, BAR_Y, barW, BAR_H);
+    }
+
     ctx.restore();
   }
 

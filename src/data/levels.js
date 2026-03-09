@@ -48,6 +48,7 @@ export const LEVELS = Object.freeze([
     maxEnemyCap:    5,
     unlockRequires: null,   // always available
     starThresholds: [0, 65, 85],  // 1★: any win; 2★: ≥65% accuracy; 3★: ≥85%
+    bpm:            110,          // tempo for cue system
     phases: Object.freeze([
       Object.freeze({ label: 'Introduction', duration: 60  }),  // 60 s — enemy base invulnerable
       Object.freeze({ label: 'Development',  duration: 90  }),  // 90 s — enemy base invulnerable
@@ -66,6 +67,7 @@ export const LEVELS = Object.freeze([
     maxEnemyCap:    6,
     unlockRequires: 'campfire',
     starThresholds: [0, 70, 90],  // 1★: any win; 2★: ≥70% accuracy; 3★: ≥90%
+    bpm:            120,
     phases: Object.freeze([
       Object.freeze({ label: 'Introduction', duration: 80  }),
       Object.freeze({ label: 'Development',  duration: 110 }),
@@ -84,6 +86,7 @@ export const LEVELS = Object.freeze([
     maxEnemyCap:    8,
     unlockRequires: 'crossing',
     starThresholds: [0, 70, 90],  // same as Crossing — accuracy standard doesn't drop
+    bpm:            130,          // faster tempo = harder cue timing
     phases: Object.freeze([
       Object.freeze({ label: 'Introduction', duration: 70  }),
       Object.freeze({ label: 'Development',  duration: 100 }),

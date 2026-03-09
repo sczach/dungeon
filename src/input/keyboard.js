@@ -169,6 +169,7 @@ export class KeyboardInput {
     this._handler   = null;
     this._tablature = null;
     this._attackSeq = null;
+    this._cue       = null;
   }
 
   /**
@@ -176,12 +177,14 @@ export class KeyboardInput {
    * @param {object} state
    * @param {import('../systems/tablature.js').TablatureSystem}           tablatureSystem
    * @param {import('../systems/attackSequence.js').AttackSequenceSystem} attackSeqSystem
+   * @param {import('../systems/cueSystem.js').CueSystem}                 cueSystem
    */
-  start(state, tablatureSystem, attackSeqSystem) {
+  start(state, tablatureSystem, attackSeqSystem, cueSystem) {
     this.stop();
     this._state     = state;
     this._tablature = tablatureSystem;
     this._attackSeq = attackSeqSystem;
+    this._cue       = cueSystem ?? null;
     this._handler   = (e) => this._onKeyDown(e);
     document.addEventListener('keydown', this._handler);
   }
@@ -255,6 +258,8 @@ export class KeyboardInput {
     } else {
       if (this._attackSeq) this._attackSeq.onNote(note, state);
     }
+    // 3b. Cue system always active (awards +10 on hit, +3 on free play)
+    if (this._cue) this._cue.onNote(note, state);
     // 4. HUD highlight
     if (state.input) {
       state.input.pressedKeys.add(note);

@@ -33,6 +33,7 @@ import { LevelSelectUI }                  from './ui/levelselect.js';
 import { InstrumentSelectUI }             from './ui/instrumentselect.js';
 import { TablatureSystem }       from './systems/tablature.js';
 import { AttackSequenceSystem }  from './systems/attackSequence.js';
+import { CueSystem }             from './systems/cueSystem.js';
 import { PromptManager }         from './systems/prompts.js';
 import { loadProgress, saveProgress, awardStars, applySkills } from './systems/progression.js';
 import { LEVELS, LEVELS_BY_ID, computeStars } from './data/levels.js';
@@ -120,6 +121,9 @@ function createInitialState() {
     phaseAnnounce:        0,           // performance.now() when phase last changed (for overlay)
     phrasePlaysThisPhase: 0,           // tablature sequences completed since phase start
 
+    // ── Musical cue system ────────────────────
+    currentCue:           null,        // {note, startTime, deadline, status} | null
+
     // ── Mode & settings ───────────────────────
     inputMode:       'summon',   // 'summon' | 'attack' — toggled by Space
     modeAnnounce:    0,          // performance.now() timestamp; 0 = none
@@ -189,6 +193,7 @@ const promptManager        = new PromptManager();
 settingsUI.loadSettings(state);   // override defaults from localStorage
 const tablatureSystem      = new TablatureSystem();
 const attackSequenceSystem = new AttackSequenceSystem();
+const cueSystem            = new CueSystem();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Scene management
@@ -395,6 +400,7 @@ function startGame(levelConfig) {
   // Initialise subsystems
   tablatureSystem.reset(state);
   attackSequenceSystem.reset(state);
+  cueSystem.reset(state);
   promptManager.reset();
 
   // Announce Wave 1
@@ -411,7 +417,7 @@ function startGame(levelConfig) {
     state.phaseAnnounce = performance.now();
   }
 
-  keyboardInput.start(state, tablatureSystem, attackSequenceSystem);
+  keyboardInput.start(state, tablatureSystem, attackSequenceSystem, cueSystem);
   setScene(SCENE.PLAYING);
 }
 
@@ -644,6 +650,7 @@ function update(dt) {
       // ── Subsystem updates (tablature only active in summon mode) ─────────
       if (state.inputMode === 'summon') tablatureSystem.update(dt, state);
       attackSequenceSystem.update(dt, state);
+      cueSystem.update(dt, state);
       promptManager.update(dt, state);
 
       // ── Lightning bolt cleanup (remove expired bolts) ──────────────────
