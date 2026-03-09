@@ -105,8 +105,10 @@ function createInitialState() {
     },
 
     // ── Bases (created in startGame with canvas-relative coords) ──
-    playerBase: null,        // Base instance
-    enemyBase:  null,        // Base instance
+    playerBase:  null,        // Base instance
+    enemyBase:   null,        // Base instance — alias to enemyBases[0] for backward compat
+    enemyBases:  [],          // Base[] — all active enemy bases (≥1)
+    _spawnBaseIdx: 0,         // round-robin index for enemy spawning
 
     // ── Entities ──────────────────────────────
     units: [],               // Unit[] — both player and enemy units
@@ -172,6 +174,33 @@ function createInitialState() {
     skillComboDoubleMilestone: false,
     skillSpawnIntervalBonus:   0,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utility helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Return the nearest alive enemy base to (x, y), or null if all are destroyed.
+ * Zero allocation: indexed for-loop, scalar arithmetic.
+ *
+ * @param {import('./systems/base.js').Base[]} bases
+ * @param {number} x
+ * @param {number} y
+ * @returns {import('./systems/base.js').Base|null}
+ */
+function findNearestAliveBase(bases, x, y) {
+  let best  = null;
+  let bestD2 = Infinity;
+  for (let i = 0; i < bases.length; i++) {
+    const b = bases[i];
+    if (b.isDestroyed()) continue;
+    const dx = b.x - x;
+    const dy = b.y - y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) { bestD2 = d2; best = b; }
+  }
+  return best;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,9 +304,13 @@ function onResize() {
     state.playerBase.x = (PLAYER_BASE_X + BASE_WIDTH / 2) * w;
     state.playerBase.y = LANE_Y * h;
   }
-  if (state.enemyBase) {
-    state.enemyBase.x = (ENEMY_BASE_X + BASE_WIDTH / 2) * w;
-    state.enemyBase.y = LANE_Y * h;
+  if (state.enemyBases.length > 0 && state.currentLevel) {
+    const cfgs = state.currentLevel.enemyBases ?? [{ x: ENEMY_BASE_X, y: LANE_Y }];
+    for (let i = 0; i < state.enemyBases.length; i++) {
+      const cfg = cfgs[i] ?? cfgs[0];
+      state.enemyBases[i].x = (cfg.x + BASE_WIDTH / 2) * w;
+      state.enemyBases[i].y = cfg.y * h;
+    }
   }
 }
 
@@ -376,7 +409,11 @@ function startGame(levelConfig) {
   const baseY = LANE_Y * H;
 
   state.playerBase = new Base('player', (PLAYER_BASE_X + BASE_WIDTH / 2) * W, baseY);
-  state.enemyBase  = new Base('enemy',  (ENEMY_BASE_X  + BASE_WIDTH / 2) * W, baseY);
+
+  // Build all enemy bases from level config (default: single centre base)
+  const baseCfgs   = level.enemyBases ?? [{ x: ENEMY_BASE_X, y: LANE_Y }];
+  state.enemyBases = baseCfgs.map(cfg => new Base('enemy', (cfg.x + BASE_WIDTH / 2) * W, cfg.y * H));
+  state.enemyBase  = state.enemyBases[0];   // backward-compat alias
 
   // Apply purchased skill buffs (also adjusts playerBase.hp/maxHp if iron-will bought)
   applySkills(state, progression);
@@ -406,13 +443,13 @@ function startGame(levelConfig) {
   // Announce Wave 1
   state.waveAnnounce = performance.now();
 
-  // Set initial phase label and enemy base vulnerability
+  // Set initial phase label and enemy base vulnerability (all bases invulnerable until Climax)
   {
     const phases = level.phases ?? DEFAULT_PHASES;
     state.phaseLabel = phases[0]?.label ?? 'Introduction';
-    // Enemy base is invulnerable until Climax (final phase)
-    if (state.enemyBase) {
-      state.enemyBase.vulnerable = (phases.length <= 1);
+    const startVulnerable = (phases.length <= 1);
+    for (let i = 0; i < state.enemyBases.length; i++) {
+      state.enemyBases[i].vulnerable = startVulnerable;
     }
     state.phaseAnnounce = performance.now();
   }
@@ -466,18 +503,33 @@ function spawnEnemyUnit() {
   }
   if (enemyCount >= cap) return;
 
-  const W        = state.canvas.width;
-  const H        = state.canvas.height;
-  const halfLane = LANE_HEIGHT * H * 0.5;
-  const laneTop  = LANE_Y * H - halfLane;
-  const laneBot  = LANE_Y * H + halfLane;
-  const spread   = halfLane * 0.7;
-  const rawY     = LANE_Y * H + (Math.random() * 2 - 1) * spread;
-  // Clamp so the unit circle stays fully within the combat strip
-  const tier     = rollEnemyTier(state.wave, state.time);
-  const radius   = [0, 12, 16, 20][tier];
-  const y        = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
-  const x        = ENEMY_BASE_X * W - 20;
+  const W = state.canvas.width;
+  const H = state.canvas.height;
+
+  // Round-robin base selection — skip destroyed bases
+  const numBases = state.enemyBases.length;
+  let spawnBase = null;
+  for (let attempt = 0; attempt < numBases; attempt++) {
+    const idx = (state._spawnBaseIdx + attempt) % numBases;
+    if (!state.enemyBases[idx].isDestroyed()) {
+      spawnBase             = state.enemyBases[idx];
+      state._spawnBaseIdx   = (idx + 1) % numBases;
+      break;
+    }
+  }
+  if (!spawnBase) return;   // all bases destroyed — win condition about to trigger
+
+  const halfLane   = LANE_HEIGHT * H * 0.5;
+  const laneCenter = spawnBase.y;
+  const laneTop    = laneCenter - halfLane;
+  const laneBot    = laneCenter + halfLane;
+  const spread     = halfLane * 0.65;
+  const rawY       = laneCenter + (Math.random() * 2 - 1) * spread;
+
+  const tier   = rollEnemyTier(state.wave, state.time);
+  const radius = [0, 12, 16, 20][tier];
+  const y      = Math.max(laneTop + radius, Math.min(laneBot - radius, rawY));
+  const x      = spawnBase.x - BASE_WIDTH * W / 2 - 20;   // just left of this base
 
   const unit = new Unit('enemy', tier, x, y);
   // Global 0.5× enemy speed — makes early game much more manageable
@@ -740,7 +792,15 @@ function update(dt) {
       // ── Unit updates + cleanup ────────────────────────────────────────────
       // Backwards iteration allows safe in-place splice.
       // Passing the full units array lets each unit scan for enemies.
-      const bases = { player: state.playerBase, enemy: state.enemyBase };
+      //
+      // Multi-base: disable lane clamping so units can move freely in y.
+      // Per-player-unit: resolve nearest alive enemy base (minimises wasted marching).
+      const multiBase = state.enemyBases.length > 1;
+      const bases = {
+        player:        state.playerBase,
+        enemy:         state.enemyBase,
+        clampDisabled: multiBase,
+      };
       for (let i = state.units.length - 1; i >= 0; i--) {
         const u = state.units[i];
         if (!u.alive) {
@@ -771,6 +831,12 @@ function update(dt) {
           state.units.splice(i, 1);
           continue;
         }
+        // Resolve target base per player unit (nearest alive base in multi-base levels)
+        if (multiBase && u.team === 'player') {
+          bases.enemy = findNearestAliveBase(state.enemyBases, u.x, u.y) ?? state.enemyBase;
+        } else {
+          bases.enemy = state.enemyBase;
+        }
         u.update(dt, state.units, bases);
         // Collect ranged-unit projectile visuals
         if (u.pendingProjectile) {
@@ -794,9 +860,10 @@ function update(dt) {
             state.phrasePlaysThisPhase = 0;
             state.phaseLabel        = phases[nextIdx].label ?? `Phase ${nextIdx + 1}`;
             state.phaseAnnounce     = performance.now();
-            // Enemy base becomes vulnerable only in the final (Climax) phase
-            if (state.enemyBase) {
-              state.enemyBase.vulnerable = (nextIdx >= phases.length - 1);
+            // All enemy bases become vulnerable only in the final (Climax) phase
+            const nowVulnerable = (nextIdx >= phases.length - 1);
+            for (let bi = 0; bi < state.enemyBases.length; bi++) {
+              state.enemyBases[bi].vulnerable = nowVulnerable;
             }
             console.log(`[phase] → ${state.phaseLabel} (phase ${nextIdx + 1}/${phases.length})`);
           }
@@ -811,7 +878,8 @@ function update(dt) {
 
       // Victory only available in the final phase (Climax)
       if (state.currentPhase >= ((state.currentLevel?.phases ?? DEFAULT_PHASES).length - 1)) {
-        let wonByBase = state.enemyBase.isDestroyed();
+        // All enemy bases must be destroyed to win by base destruction
+        let wonByBase = state.enemyBases.length > 0 && state.enemyBases.every(b => b.isDestroyed());
 
         // Performance win: ≥2 complete sequences in Climax with ≥70 % accuracy
         const tab         = state.tablature;

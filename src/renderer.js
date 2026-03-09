@@ -67,8 +67,11 @@ export class Renderer {
     this.ctx         = ctx;
     this._titlePhase = 0;
     // Base damage flash: stores performance.now() when HP last dropped
-    this._basePrevHp   = { player: -1, enemy: -1 };
-    this._baseDmgFlash = { player: 0,  enemy: 0  };
+    this._basePrevHp        = { player: -1 };
+    this._baseDmgFlash      = { player: 0  };
+    // Per-enemy-base flash tracking (indexed by position in state.enemyBases)
+    this._enemyBasePrevHp   = [];
+    this._enemyBaseDmgFlash = [];
   }
 
   // ─────────────────────────────────────────
@@ -405,24 +408,39 @@ export class Renderer {
   // ─────────────────────────────────────────
 
   _drawBases(state, W, H) {
-    if (!state.playerBase || !state.enemyBase) return;
+    const enemyBases = state.enemyBases ?? (state.enemyBase ? [state.enemyBase] : []);
+    if (!state.playerBase || enemyBases.length === 0) return;
+
     const laneH = LANE_HEIGHT * H;
     const baseW = BASE_WIDTH * W;
     const baseH = laneH * 1.5;
     const laneY = LANE_Y * H;
     const now   = performance.now();
 
-    // Track HP changes to trigger damage flash
-    for (const team of ['player', 'enemy']) {
-      const base = team === 'player' ? state.playerBase : state.enemyBase;
-      if (this._basePrevHp[team] > 0 && base.hp < this._basePrevHp[team]) {
-        this._baseDmgFlash[team] = now;
-      }
-      this._basePrevHp[team] = base.hp;
+    // ── Player base ────────────────────────────────────────────────────────
+    if (this._basePrevHp.player > 0 && state.playerBase.hp < this._basePrevHp.player) {
+      this._baseDmgFlash.player = now;
     }
-
+    this._basePrevHp.player = state.playerBase.hp;
     this._drawBase(state.playerBase, PLAYER_BASE_X * W, laneY - baseH / 2, baseW, baseH, '#7a4810', '#e8a030', false, this._baseDmgFlash.player);
-    this._drawBase(state.enemyBase,  ENEMY_BASE_X  * W, laneY - baseH / 2, baseW, baseH, '#6a1010', '#ff4444', true,  this._baseDmgFlash.enemy);
+
+    // ── Enemy bases (one or more) ──────────────────────────────────────────
+    for (let i = 0; i < enemyBases.length; i++) {
+      const b = enemyBases[i];
+      if (!b) continue;
+
+      // Track damage flash per-base
+      const prevHp = this._enemyBasePrevHp[i] ?? -1;
+      if (prevHp > 0 && b.hp < prevHp) {
+        this._enemyBaseDmgFlash[i] = now;
+      }
+      this._enemyBasePrevHp[i] = b.hp;
+
+      // Draw from (left-edge, top) computed from the base's own centre
+      const drawX = b.x - baseW / 2;
+      const drawY = b.y - baseH / 2;
+      this._drawBase(b, drawX, drawY, baseW, baseH, '#6a1010', '#ff4444', true, this._enemyBaseDmgFlash[i] ?? 0);
+    }
   }
 
   /**
@@ -1024,11 +1042,12 @@ export class Renderer {
     // Subline
     ctx.font      = '20px Georgia, serif';
     ctx.fillStyle = CLR.TEXT;
-    const isFinal = state.phaseLabel === 'Climax';
-    ctx.fillText(
-      isFinal ? 'Destroy the enemy base!' : 'Prepare your forces',
-      W / 2, H * 0.62 + 40
-    );
+    const isFinal    = state.phaseLabel === 'Climax';
+    const multiBase  = (state.enemyBases?.length ?? 1) > 1;
+    const subLine    = isFinal
+      ? (multiBase ? 'Destroy all enemy bases!' : 'Destroy the enemy base!')
+      : 'Prepare your forces';
+    ctx.fillText(subLine, W / 2, H * 0.62 + 40);
     ctx.restore();
   }
 
@@ -1046,11 +1065,14 @@ export class Renderer {
     ctx.fillStyle    = 'rgba(240,234,214,0.7)';
     ctx.fillText(`▸ ${state.phaseLabel}`, W - 12, 12);
 
-    // If enemy base is invulnerable, show a small warning
-    if (state.enemyBase && !state.enemyBase.vulnerable) {
+    // If any alive enemy base is invulnerable, show a small warning
+    const enemyBases = state.enemyBases ?? (state.enemyBase ? [state.enemyBase] : []);
+    const anyInvulnerable = enemyBases.some(b => !b.isDestroyed() && !b.vulnerable);
+    if (anyInvulnerable) {
       ctx.font      = '12px Georgia, serif';
       ctx.fillStyle = 'rgba(255,180,60,0.8)';
-      ctx.fillText('Base invulnerable', W - 12, 30);
+      const label = enemyBases.length > 1 ? 'Bases invulnerable' : 'Base invulnerable';
+      ctx.fillText(label, W - 12, 30);
     }
     ctx.restore();
   }

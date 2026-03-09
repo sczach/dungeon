@@ -19,6 +19,10 @@
  * @typedef {{label:string, duration:number|null}} PhaseConfig
  * duration=null means "run until win condition triggers".
  *
+ * @typedef {{x:number, y:number}} BaseConfig
+ * Normalised (0–1) canvas fractions for an enemy base spawn position.
+ * x = left edge fraction (matches ENEMY_BASE_X), y = vertical centre fraction.
+ *
  * @typedef {Object} LevelConfig
  * @property {string}        id              — unique identifier, used as localStorage key
  * @property {string}        name            — display name on level select
@@ -31,6 +35,7 @@
  * @property {number}        maxEnemyCap     — max simultaneous enemy units on screen
  * @property {string}        unlockRequires  — id of level that must be beaten first, or null
  * @property {number[]}      starThresholds  — note accuracy % for [1★, 2★, 3★]
+ * @property {BaseConfig[]}  enemyBases      — one entry per enemy base; more = harder
  * @property {PhaseConfig[]} phases          — ordered phase definitions (last phase has duration=null)
  */
 
@@ -49,6 +54,9 @@ export const LEVELS = Object.freeze([
     unlockRequires: null,   // always available
     starThresholds: [0, 65, 85],  // 1★: any win; 2★: ≥65% accuracy; 3★: ≥85%
     bpm:            110,          // tempo for cue system
+    enemyBases: Object.freeze([
+      Object.freeze({ x: 0.88, y: 0.50 }),   // single base — lane centre
+    ]),
     phases: Object.freeze([
       Object.freeze({ label: 'Introduction', duration: 60  }),  // 60 s — enemy base invulnerable
       Object.freeze({ label: 'Development',  duration: 90  }),  // 90 s — enemy base invulnerable
@@ -68,9 +76,14 @@ export const LEVELS = Object.freeze([
     unlockRequires: 'campfire',
     starThresholds: [0, 70, 90],  // 1★: any win; 2★: ≥70% accuracy; 3★: ≥90%
     bpm:            120,
+    enemyBases: Object.freeze([
+      Object.freeze({ x: 0.88, y: 0.33 }),   // upper base
+      Object.freeze({ x: 0.88, y: 0.67 }),   // lower base
+    ]),
     phases: Object.freeze([
-      Object.freeze({ label: 'Introduction', duration: 80  }),
-      Object.freeze({ label: 'Development',  duration: 110 }),
+      Object.freeze({ label: 'Introduction', duration: 70  }),
+      Object.freeze({ label: 'Development',  duration: 100 }),
+      Object.freeze({ label: 'Assault',      duration: 80  }),  // 4th phase — both bases vulnerable
       Object.freeze({ label: 'Climax',       duration: null }),
     ]),
   }),
@@ -87,9 +100,15 @@ export const LEVELS = Object.freeze([
     unlockRequires: 'crossing',
     starThresholds: [0, 70, 90],  // same as Crossing — accuracy standard doesn't drop
     bpm:            130,          // faster tempo = harder cue timing
+    enemyBases: Object.freeze([
+      Object.freeze({ x: 0.88, y: 0.22 }),   // top base
+      Object.freeze({ x: 0.88, y: 0.50 }),   // centre base (lane)
+      Object.freeze({ x: 0.83, y: 0.78 }),   // bottom base (slightly recessed)
+    ]),
     phases: Object.freeze([
-      Object.freeze({ label: 'Introduction', duration: 70  }),
-      Object.freeze({ label: 'Development',  duration: 100 }),
+      Object.freeze({ label: 'Introduction', duration: 60  }),
+      Object.freeze({ label: 'Development',  duration: 90  }),
+      Object.freeze({ label: 'Assault',      duration: 70  }),  // 4th phase — all three bases vulnerable
       Object.freeze({ label: 'Climax',       duration: null }),
     ]),
   }),

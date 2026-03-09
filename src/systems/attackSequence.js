@@ -228,13 +228,26 @@ export class AttackSequenceSystem {
       if (d < nearestDist) { nearestDist = d; nearestUnit = u; }
     }
 
+    // Find nearest alive enemy base as bolt fallback target
+    const allBases  = state.enemyBases ?? (state.enemyBase ? [state.enemyBase] : []);
+    let nearestBase = null;
+    let nearestBaseDist = Infinity;
+    for (let i = 0; i < allBases.length; i++) {
+      const b = allBases[i];
+      if (b.isDestroyed()) continue;
+      const dx = b.x - srcX;
+      const dy = b.y - srcY;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      if (d < nearestBaseDist) { nearestBaseDist = d; nearestBase = b; }
+    }
+
     if (nearestUnit !== null) {
       nearestUnit.hp -= damage;
       if (nearestUnit.hp <= 0) nearestUnit.alive = false;
       this._fireBolt(srcX, srcY, nearestUnit.x, nearestUnit.y, state);
-    } else if (state.enemyBase) {
-      state.enemyBase.takeDamage(damage);
-      this._fireBolt(srcX, srcY, state.enemyBase.x, state.enemyBase.y, state);
+    } else if (nearestBase) {
+      nearestBase.takeDamage(damage);
+      this._fireBolt(srcX, srcY, nearestBase.x, nearestBase.y, state);
     }
   }
 

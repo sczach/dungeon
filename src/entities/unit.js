@@ -232,7 +232,8 @@ export class Unit {
     }
 
     // ── 3. Lane y-clamping for all live units ─────────────────────────────
-    if (bases.player) {
+    // Disabled in multi-base levels so units can move freely between lanes.
+    if (bases.player && !bases.clampDisabled) {
       const laneCenter = bases.player.y;
       const halfH      = laneCenter * (LANE_HEIGHT / LANE_Y) * 0.5;
       const minY = laneCenter - halfH + this.radius;
@@ -273,10 +274,12 @@ export class Unit {
         this.y         += (dy / dist) * this.speed * dt;
       }
     } else {
-      // No unit in lock-on radius — approach the enemy base
-      const bx  = targetBase.x - this.x;
-      const by  = targetBase.y - this.y;
-      const bd2 = bx * bx + by * by;
+      // No unit in lock-on radius — approach the target base in 2D.
+      // For single-base levels: by ≈ 0 so movement is purely horizontal (same as before).
+      // For multi-base levels with clampDisabled: units steer diagonally to off-lane bases.
+      const bx   = targetBase.x - this.x;
+      const by   = targetBase.y - this.y;
+      const bd2  = bx * bx + by * by;
 
       if (bd2 <= atkR2) {
         this.marching = false;
@@ -286,8 +289,9 @@ export class Unit {
         }
       } else {
         this.marching  = true;
-        const dir      = this.team === 'player' ? 1 : -1;
-        this.x        += dir * this.speed * dt;
+        const dist     = Math.sqrt(bd2) || 1;
+        this.x        += (bx / dist) * this.speed * dt;
+        this.y        += (by / dist) * this.speed * dt;
       }
     }
   }
