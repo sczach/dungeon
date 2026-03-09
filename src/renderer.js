@@ -192,6 +192,7 @@ export class Renderer {
     this._drawMap(W, H);
     this._drawBases(state, W, H);
     this._drawUnits(state);
+    this._drawLightningBolts(state, W, H);
     this._drawEnemySequences(state, W, H);
     this._drawTablature(state, W, H);       // top-of-screen summon prompt (above map)
     this._drawWaveAnnouncement(state, W, H);
@@ -664,6 +665,74 @@ export class Renderer {
   }
 
   // ─────────────────────────────────────────
+  // ─────────────────────────────────────────
+  // Lightning bolts (direct attack visuals)
+  // ─────────────────────────────────────────
+
+  /**
+   * Render active lightning bolt animations.
+   * Each bolt fades from alpha=1.0 to 0 over bolt.duration ms.
+   * Drawn as a jagged path (pre-computed segments) with:
+   *   - Wide yellow glow layer (outer, 50 % alpha)
+   *   - Narrow white core layer (inner, full alpha)
+   *   - Brief full-screen yellow flash at the moment of impact (first 20 % lifetime)
+   * @param {object} state
+   * @param {number} W @param {number} H
+   */
+  _drawLightningBolts(state, W, H) {
+    const bolts = state.lightningBolts;
+    if (!bolts || bolts.length === 0) return;
+    const ctx = this.ctx;
+    const now = performance.now();
+
+    ctx.save();
+    for (let i = 0; i < bolts.length; i++) {
+      const b    = bolts[i];
+      const age  = now - b.startTime;
+      if (age >= b.duration) continue;
+      const alpha = 1 - age / b.duration;   // 1.0 → 0.0 over duration
+      const segs  = b.segments;
+      if (!segs || segs.length < 2) continue;
+
+      // Impact flash — thin yellow screen overlay for first 20 % of lifetime
+      if (alpha > 0.80) {
+        const flashA = (alpha - 0.80) / 0.20 * 0.07;
+        ctx.fillStyle = `rgba(255, 255, 160, ${flashA.toFixed(3)})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // Build the jagged path once, reuse for both draw calls
+      ctx.beginPath();
+      ctx.moveTo(segs[0].x, segs[0].y);
+      for (let j = 1; j < segs.length; j++) {
+        ctx.lineTo(segs[j].x, segs[j].y);
+      }
+
+      // Outer glow — wide, yellow, half opacity
+      ctx.strokeStyle = `rgba(255, 220, 60, ${(alpha * 0.55).toFixed(3)})`;
+      ctx.lineWidth   = 6;
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
+      ctx.shadowBlur  = 12;
+      ctx.shadowColor = 'rgba(255, 200, 0, 0.8)';
+      ctx.stroke();
+
+      // Rebuild path for inner core (cannot reuse after stroke without re-build)
+      ctx.beginPath();
+      ctx.moveTo(segs[0].x, segs[0].y);
+      for (let j = 1; j < segs.length; j++) {
+        ctx.lineTo(segs[j].x, segs[j].y);
+      }
+
+      // Inner core — narrow, bright white
+      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
+      ctx.lineWidth   = 2;
+      ctx.shadowBlur  = 0;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // Enemy attack sequences
   // ─────────────────────────────────────────
 

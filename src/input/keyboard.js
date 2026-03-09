@@ -224,6 +224,10 @@ export class KeyboardInput {
       if (next === 'summon' && this._tablature) {
         this._tablature.refresh(state);
       }
+      // Reset attack-miss counter so each attack session starts at full accuracy
+      if (next === 'attack' && state.attackMisses !== undefined) {
+        state.attackMisses = 0;
+      }
       console.log(`[mode] → ${next}`);
       return;
     }

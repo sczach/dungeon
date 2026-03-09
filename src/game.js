@@ -95,6 +95,8 @@ function createInitialState() {
 
     // ── Entities ──────────────────────────────
     units: [],               // Unit[] — both player and enemy units
+    lightningBolts: [],      // {x1,y1,x2,y2,startTime,duration,segments}[] — active bolt animations
+    attackMisses:   0,       // notes pressed in ATTACK mode with no enemy match (accuracy tracking)
 
     // ── Mode & settings ───────────────────────
     inputMode:       'summon',   // 'summon' | 'attack' — toggled by Space
@@ -574,6 +576,16 @@ function update(dt) {
       if (state.inputMode === 'summon') tablatureSystem.update(dt, state);
       attackSequenceSystem.update(dt, state);
       promptManager.update(dt, state);
+
+      // ── Lightning bolt cleanup (remove expired bolts) ──────────────────
+      {
+        const nowMs = performance.now();
+        for (let bi = state.lightningBolts.length - 1; bi >= 0; bi--) {
+          if (nowMs - state.lightningBolts[bi].startTime >= state.lightningBolts[bi].duration) {
+            state.lightningBolts.splice(bi, 1);
+          }
+        }
+      }
       // No resource auto-tick — resources earned from kills only
 
       // ── Wave progression (every 30 s of play time, capped by level) ────────
