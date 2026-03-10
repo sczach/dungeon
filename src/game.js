@@ -37,8 +37,8 @@ import { CueSystem }             from './systems/cueSystem.js';
 import { PromptManager }         from './systems/prompts.js';
 import { loadProgress, saveProgress, awardStars, applySkills } from './systems/progression.js';
 import { LEVELS, LEVELS_BY_ID, computeStars } from './data/levels.js';
-import { WORLD_MAP_NODES, WORLD_MAP_NODES_BY_ID, TUTORIAL_SEQUENCE, isNodeUnlocked } from './data/worldMap.js';
-import { getNodeAtPoint, getPlayButtonBounds } from './ui/worldMapRenderer.js';
+import { WORLD_MAP_NODES, WORLD_MAP_NODES_BY_ID, isNodeUnlocked } from './data/worldMap.js';
+import { getNodeAtPoint, getPlayButtonBounds, getResetViewButtonBounds } from './ui/worldMapRenderer.js';
 import { generateMelody, playMelody, stopMelody } from './audio/melodyEngine.js';
 import { applyLesson }                             from './data/lessons.js';
 
@@ -200,18 +200,27 @@ function createInitialState() {
     // ── Victory melody ─────────────────────────────────────────────────────
     victoryMelody:  null,    // MelodyResult | null — generated at VICTORY, played on screen
 
-    // ── World map (camera + selection) ───────────────────────────────────────
+    // ── World map (camera + selection + zoom) ───────────────────────────────
     worldMap: {
-      selectedNodeId:      null,  // id of currently highlighted node
-      lastPlayedNodeId:    null,  // id of last completed level (teal ring on return)
-      cameraX:             0,     // pan offset in logical pixels
-      cameraY:             0,
-      isDragging:          false,
-      dragAnchorX:         0,     // pointer position when drag started
-      dragAnchorY:         0,
-      dragCamStartX:       0,     // cameraX value when drag started
-      dragCamStartY:       0,
+      selectedNodeId:       null,  // id of currently highlighted node
+      lastPlayedNodeId:     null,  // id of last completed level (teal ring on return)
+      cameraX:              0,     // pan offset in logical pixels
+      cameraY:              0,
+      isDragging:           false,
+      dragAnchorX:          0,     // pointer position when drag started
+      dragAnchorY:          0,
+      dragCamStartX:        0,     // cameraX value when drag started
+      dragCamStartY:        0,
       showTutorialComplete: false, // banner shown after T4 victory
+      // ── Zoom ──────────────────────────────────────────────────────────────
+      zoom:                 1.0,   // current zoom level (applied to canvas transform)
+      zoomTarget:           1.0,   // target zoom (lerped toward each frame)
+      // ── Pan animation (hub reveal after T4 unlock) ─────────────────────
+      panAnimating:         false, // true while smoothly panning to hub
+      regionsUnlockedBanner: null, // { startTime: number } | null — overlay timer
+      // ── Pinch-to-zoom touch state ─────────────────────────────────────
+      pinchDist0:           null,  // initial distance between two fingers
+      pinchZoom0:           1.0,   // zoom at pinch start
     },
 
     // ── Tutorial / level-start ────────────────────────────────────────────────
@@ -400,11 +409,12 @@ function _handleVictory() {
     console.log(`[victory] ${state.starsEarned}★ acc=${state.noteAccuracy}% level=${level.id}`);
   }
 
-  // Mark tutorial complete when T4 is beaten (gates world map unlock)
+  // Mark tutorial complete when T4 is beaten (gates world map unlock + hub pan)
   if (level?.id === 'tutorial-4') {
-    progression.tutorialComplete = true;
+    progression.tutorialComplete         = true;
     saveProgress(progression);
-    state._progression           = progression;
+    state._progression                   = progression;
+    state.worldMap.showTutorialComplete  = true; // triggers banner + hub pan animation
   }
 
   // Track last played node so world map can highlight it with a teal ring
@@ -443,12 +453,20 @@ function setScene(scene) {
     levelSelectUI.refresh(progression);
   }
 
-  // World map: centre camera on first visit (cameraX==0 means uninitialised)
+  // World map: centre camera on first visit; trigger hub pan when newly unlocked
   if (scene === SCENE.WORLD_MAP) {
-    const W = state.canvas.width, H = state.canvas.height;
+    const W    = state.canvas.width, H = state.canvas.height;
+    const zoom = state.worldMap.zoom ?? 1.0;
     if (state.worldMap.cameraX === 0 && state.worldMap.cameraY === 0) {
-      state.worldMap.cameraX = Math.round(W / 2 - 425);
-      state.worldMap.cameraY = Math.round(H * 0.45 - 355);
+      // Default view: tutorial spine centred at (1200, 1430) in the 2400×1800 map
+      state.worldMap.cameraX = Math.round(W / 2 - 1200 * zoom);
+      state.worldMap.cameraY = Math.round(H / 2 - 1430 * zoom);
+    }
+    // Pan to hub and show regions-unlocked overlay on first post-T4 arrival
+    if (state.worldMap.showTutorialComplete && !state.worldMap.panAnimating
+        && !state.worldMap.regionsUnlockedBanner) {
+      state.worldMap.panAnimating          = true;
+      state.worldMap.regionsUnlockedBanner = { startTime: performance.now() };
     }
     state._progression = progression;
   }
@@ -1313,6 +1331,29 @@ function update(dt) {
     case SCENE.VICTORY:
     case SCENE.DEFEAT:
       break;
+
+    case SCENE.WORLD_MAP: {
+      const cam = state.worldMap;
+      // Smooth zoom lerp (ease-out, ~150ms at 60fps)
+      if (Math.abs((cam.zoom ?? 1) - (cam.zoomTarget ?? 1)) > 0.001) {
+        cam.zoom += ((cam.zoomTarget ?? 1) - cam.zoom) * Math.min(1, dt * 10);
+      }
+      // Pan animation to hub node (1200, 960) — triggered by T4 unlock
+      if (cam.panAnimating) {
+        const W = state.canvas.width, H = state.canvas.height;
+        const zoom = cam.zoom ?? 1.0;
+        const targetX = W / 2 - 1200 * zoom;
+        const targetY = H / 2 - 960 * zoom;
+        cam.cameraX += (targetX - cam.cameraX) * Math.min(1, dt * 2.5);
+        cam.cameraY += (targetY - cam.cameraY) * Math.min(1, dt * 2.5);
+        if (Math.abs(cam.cameraX - targetX) < 1.5 && Math.abs(cam.cameraY - targetY) < 1.5) {
+          cam.cameraX = targetX;
+          cam.cameraY = targetY;
+          cam.panAnimating = false;
+        }
+      }
+      break;
+    }
   }
 }
 
@@ -1432,46 +1473,128 @@ initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) =
   canvas.addEventListener('mouseleave', () => {
     if (state.scene === SCENE.WORLD_MAP) state.worldMap.isDragging = false;
   });
+  // ── Touch: single-finger pan, two-finger pinch-to-zoom ──────────────────
   canvas.addEventListener('touchstart', e => {
     if (state.scene !== SCENE.WORLD_MAP) return;
-    const t = e.touches[0]; if (!t) return;
-    const { x, y } = _toLogical(t.clientX, t.clientY);
-    _onWorldMapPointerDown(x, y);
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const { x, y } = _toLogical(t.clientX, t.clientY);
+      _onWorldMapPointerDown(x, y);
+    } else if (e.touches.length === 2) {
+      // Pinch start — record initial distance and zoom
+      const a = e.touches[0], b = e.touches[1];
+      const dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
+      state.worldMap.pinchDist0 = Math.sqrt(dx * dx + dy * dy);
+      state.worldMap.pinchZoom0 = state.worldMap.zoom;
+      state.worldMap.isDragging = false;  // disable pan during pinch
+    }
   }, { passive: true });
+
   canvas.addEventListener('touchmove', e => {
     if (state.scene !== SCENE.WORLD_MAP) return;
     e.preventDefault();
-    const t = e.touches[0]; if (!t) return;
-    const { x, y } = _toLogical(t.clientX, t.clientY);
-    _onWorldMapPointerMove(x, y);
+    if (e.touches.length === 1 && state.worldMap.pinchDist0 === null) {
+      const t = e.touches[0];
+      const { x, y } = _toLogical(t.clientX, t.clientY);
+      _onWorldMapPointerMove(x, y);
+    } else if (e.touches.length === 2 && state.worldMap.pinchDist0 !== null) {
+      const a = e.touches[0], b = e.touches[1];
+      const dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const newZoom = state.worldMap.pinchZoom0 * (dist / state.worldMap.pinchDist0);
+      // Pinch centre in logical space
+      const { x: cx, y: cy } = _toLogical(
+        (a.clientX + b.clientX) / 2,
+        (a.clientY + b.clientY) / 2
+      );
+      _applyWorldMapZoom(newZoom, cx, cy, true /* immediate */);
+    }
   }, { passive: false });
+
   canvas.addEventListener('touchend', e => {
     if (state.scene !== SCENE.WORLD_MAP) return;
-    const t = e.changedTouches[0]; if (!t) return;
-    const { x, y } = _toLogical(t.clientX, t.clientY);
-    _onWorldMapPointerUp(x, y);
+    if (e.touches.length === 0) {
+      state.worldMap.pinchDist0 = null;
+      const t = e.changedTouches[0]; if (!t) return;
+      const { x, y } = _toLogical(t.clientX, t.clientY);
+      _onWorldMapPointerUp(x, y);
+    } else {
+      state.worldMap.pinchDist0 = null;
+    }
   }, { passive: true });
+
+  // ── Scroll-wheel zoom ────────────────────────────────────────────────────
+  canvas.addEventListener('wheel', e => {
+    if (state.scene !== SCENE.WORLD_MAP) return;
+    e.preventDefault();
+    const { x, y } = _toLogical(e.clientX, e.clientY);
+    const factor    = 1 - e.deltaY * 0.0008;
+    _applyWorldMapZoom(state.worldMap.zoom * factor, x, y, false /* animate */);
+  }, { passive: false });
+}
+
+/**
+ * Apply a zoom change centered on a screen-space point.
+ * Keeps the world point under (cx, cy) fixed as zoom changes.
+ * @param {number} newZoom  — desired zoom level
+ * @param {number} cx       — screen x to zoom around
+ * @param {number} cy       — screen y to zoom around
+ * @param {boolean} immediate — true = apply directly, false = set zoomTarget (lerped)
+ */
+function _applyWorldMapZoom(newZoom, cx, cy, immediate = false) {
+  const cam     = state.worldMap;
+  const oldZoom = cam.zoom;
+  newZoom       = Math.max(0.6, Math.min(1.4, newZoom));
+  if (immediate) {
+    // Adjust camera so the world point under cursor stays fixed
+    cam.cameraX = cx - (cx - cam.cameraX) / oldZoom * newZoom;
+    cam.cameraY = cy - (cy - cam.cameraY) / oldZoom * newZoom;
+    cam.zoom       = newZoom;
+    cam.zoomTarget = newZoom;
+  } else {
+    // Adjust camera immediately (keeps the view stable), animate zoom via lerp
+    cam.cameraX = cx - (cx - cam.cameraX) / oldZoom * newZoom;
+    cam.cameraY = cy - (cy - cam.cameraY) / oldZoom * newZoom;
+    cam.zoom       = newZoom;
+    cam.zoomTarget = newZoom;
+  }
 }
 
 function _handleWorldMapClick(x, y) {
   if (state.scene !== SCENE.WORLD_MAP) return;
-  const W = state.canvas.width, H = state.canvas.height;
+  const W    = state.canvas.width, H = state.canvas.height;
+  const zoom = state.worldMap.zoom ?? 1.0;
 
-  // Check PLAY button (screen-space — not affected by camera pan)
+  // ── Reset-view button (screen-space, top-right) ─────────────────────────
+  const rvb = getResetViewButtonBounds(W, H);
+  if (rvb && x >= rvb.x && y >= rvb.y && x <= rvb.x + rvb.w && y <= rvb.y + rvb.h) {
+    // Animate camera back to tutorial spine centre at zoom=1.0
+    state.worldMap.cameraX    = W / 2 - 1200 * zoom;
+    state.worldMap.cameraY    = H / 2 - 1430 * zoom;
+    state.worldMap.zoom       = zoom;
+    state.worldMap.zoomTarget = 1.0;
+    // Snap camera for the default zoom target
+    state.worldMap.cameraX = W / 2 - 1200;
+    state.worldMap.cameraY = H / 2 - 1430;
+    state.worldMap.zoom    = 1.0;
+    return;
+  }
+
+  // ── PLAY button (screen-space — not affected by camera) ────────────────
   const pb = getPlayButtonBounds(W, H);
   if (state.worldMap.selectedNodeId &&
       x >= pb.x && y >= pb.y && x <= pb.x + pb.w && y <= pb.y + pb.h) {
     const node = WORLD_MAP_NODES_BY_ID[state.worldMap.selectedNodeId];
-    if (node && !node.stub && isNodeUnlocked(node, progression)) {
+    if (node && !node.stub && !node.isHub && isNodeUnlocked(node, progression)) {
       state.pendingLevel = node;
       setScene(SCENE.LEVEL_START);
     }
     return;
   }
 
-  // Hit-test world map nodes (subtract camera offset to get world coords)
-  const wx = x - state.worldMap.cameraX;
-  const wy = y - state.worldMap.cameraY;
+  // ── Hit-test world nodes (divide by zoom to get world coords) ──────────
+  const wx = (x - state.worldMap.cameraX) / zoom;
+  const wy = (y - state.worldMap.cameraY) / zoom;
   const nodeId = getNodeAtPoint(wx, wy, W, H, WORLD_MAP_NODES);
   if (nodeId) {
     const node = WORLD_MAP_NODES_BY_ID[nodeId];
