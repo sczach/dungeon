@@ -292,6 +292,19 @@ export class KeyboardInput {
     if (!this._chargeKey || e.key.toLowerCase() !== this._chargeKey) return;
 
     if (state.chargeNote !== null && state.chargeProgress >= 1.0) {
+      // Hardcore mode: cue gating in CHARGE — wrong note held = charge blocked
+      if (state.hardcoreMode) {
+        const now      = performance.now();
+        const cue      = state.currentCue;
+        const cueActive = cue && cue.status === 'active' && now <= cue.deadline;
+        if (cueActive && state.chargeNote !== cue.note) {
+          state.wrongNoteFlash = { time: now };
+          state.chargeNote     = null;
+          state.chargeProgress = 0;
+          this._chargeKey      = null;
+          return;
+        }
+      }
       const level = Math.min(3, Math.floor(state.chargeProgress));
       console.log(`[charge] release level=${level} note=${state.chargeNote}`);
       if (this._attackSeq) {

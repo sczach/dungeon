@@ -159,6 +159,24 @@ export class AttackSequenceSystem {
    * @param {object} state
    */
   onNote(note, state) {
+    const now = performance.now();
+
+    // 1. Global attack cooldown — prevents rapid-fire mashing
+    if (now < (state.attackCooldownEnd ?? 0)) return;
+
+    // 2. Cue gate — wrong note when a cue is active → red flash, no attack
+    const cue      = state.currentCue;
+    const cueActive = cue && cue.status === 'active' && now <= cue.deadline;
+    if (cueActive && note !== cue.note) {
+      state.wrongNoteFlash = { time: now };
+      return;
+    }
+
+    // 3. Damage multiplier: full on cue match, 50% on free play (no active cue)
+    const dmgMult = cueActive ? 1.0 : 0.5;
+    state.attackCooldownEnd = now + 400;
+
+    // 4. Find the best matching enemy sequence (existing priority logic)
     const units = state.units;
     let bestUnit  = null;
     let bestScore = Infinity;
@@ -182,14 +200,14 @@ export class AttackSequenceSystem {
 
     // ── Miss path: no enemy sequence matched this note ────────────────────
     if (bestUnit === null) {
-      this._handleDirectAttack(note, state);
+      this._handleDirectAttack(note, state, dmgMult);
       return;
     }
 
     // ── Hit path: advance the matched enemy's sequence ────────────────────
     bestUnit.attackSeqProgress++;
     if (bestUnit.attackSeqProgress >= bestUnit.attackSeq.length) {
-      this._applyEffect(bestUnit, state);
+      this._applyEffect(bestUnit, state, dmgMult);
     }
   }
 
@@ -207,12 +225,12 @@ export class AttackSequenceSystem {
    * @param {string} note  — the unmatched note (unused; kept for future use)
    * @param {object} state
    */
-  _handleDirectAttack(note, state) {   // eslint-disable-line no-unused-vars
+  _handleDirectAttack(note, state, dmgMult = 1.0) {   // eslint-disable-line no-unused-vars
     const priorMisses = state.attackMisses ?? 0;
     if (state.attackMisses !== undefined) state.attackMisses = priorMisses + 1;
 
     const accuracy = Math.max(0.1, 1 - priorMisses * 0.10);
-    const damage   = BASE_DIRECT_DAMAGE * accuracy;
+    const damage   = BASE_DIRECT_DAMAGE * accuracy * dmgMult;
 
     if (!state.playerBase) return;
     const srcX = state.playerBase.x;
@@ -264,20 +282,30 @@ export class AttackSequenceSystem {
    * @param {import('../entities/unit.js').Unit} unit
    * @param {object} state
    */
-  _applyEffect(unit, state) {
+  _applyEffect(unit, state, dmgMult = 1.0) {
     if (unit.tier === 1) {
-      unit.hp    = 0;
-      unit.alive = false;
-      this._pushDmgNum(unit.x, unit.y, unit.maxHp, '#ff8800', state);
+      if (dmgMult >= 1.0) {
+        // Full cue hit — instant kill
+        unit.hp    = 0;
+        unit.alive = false;
+        this._pushDmgNum(unit.x, unit.y, unit.maxHp, '#ff8800', state);
+      } else {
+        // Free-play (50%) — significant damage but not instant kill
+        const dealt = Math.round(unit.maxHp * dmgMult);
+        unit.hp = Math.max(0, unit.hp - dealt);
+        if (unit.hp <= 0) unit.alive = false;
+        this._pushDmgNum(unit.x, unit.y, dealt, '#ffaa44', state);
+      }
     } else if (unit.tier === 2) {
-      const dealt = Math.round(unit.maxHp * 0.6);
+      const dealt = Math.round(unit.maxHp * 0.6 * dmgMult);
       unit.hp = Math.max(0, unit.hp - dealt);
       if (unit.hp <= 0) unit.alive = false;
       this._pushDmgNum(unit.x, unit.y, dealt, '#ffcc44', state);
       if (dealt >= SHAKE_THRESHOLD) this._triggerShake(4, state);
     } else {
+      // T3 stun — always applies; duration halved on free play
       unit.stunned   = true;
-      unit.stunTimer = STUN_DURATION;
+      unit.stunTimer = STUN_DURATION * dmgMult;
       this._pushDmgNum(unit.x, unit.y, 0, '#cc88ff', state, 'STUN');
     }
     unit.attackSeqProgress = 0;

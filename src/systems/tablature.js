@@ -149,6 +149,16 @@ export class TablatureSystem {
     if (tab.sequenceDoneTime > 0) return;  // waiting for new sequence generation
 
     const now = performance.now();
+
+    // Hardcore mode: cue gating applies in SUMMON mode too
+    if (state.hardcoreMode) {
+      const cue      = state.currentCue;
+      const cueActive = cue && cue.status === 'active' && now <= cue.deadline;
+      if (cueActive && note !== cue.note) {
+        state.wrongNoteFlash = { time: now };
+        return;  // wrong note: block summon
+      }
+    }
     const idx = tab.activeIndex;
     if (idx >= tab.queue.length) return;
 

@@ -227,6 +227,7 @@ export class Renderer {
     this._drawPhaseAnnouncement(state, W, H);
     this._drawPhaseLabel(state, W, H);
     this._drawCueCard(state, W, H);
+    this._drawAttackCooldown(state, W, H);
     this._drawModeAnnouncement(state, W, H);
     this._drawTutorialOverlay(state, W, H);
     renderHUD(this.ctx, state, W, H);
@@ -1319,9 +1320,15 @@ export class Renderer {
     const window   = cue.deadline - cue.startTime;
     const progress = Math.max(0, 1 - elapsed / window);  // 1.0 → 0.0
 
+    // Wrong-note flash check (300 ms red override)
+    const wrongFlash = state.wrongNoteFlash
+      && (now - state.wrongNoteFlash.time) < 300;
+
     // Card background colour by status
     let bgColor;
-    if (cue.status === 'hit') {
+    if (wrongFlash) {
+      bgColor = 'rgba(140,20,20,0.92)';
+    } else if (cue.status === 'hit') {
       bgColor = 'rgba(30, 120, 50, 0.92)';
     } else if (cue.status === 'missed') {
       bgColor = 'rgba(120, 20, 20, 0.82)';
@@ -1335,7 +1342,8 @@ export class Renderer {
 
     // Card body
     ctx.fillStyle   = bgColor;
-    ctx.strokeStyle = cue.status === 'hit'    ? '#44ff88'
+    ctx.strokeStyle = wrongFlash              ? '#ff3322'
+                    : cue.status === 'hit'    ? '#44ff88'
                     : cue.status === 'missed' ? '#ff5544'
                     : CLR.ACCENT;
     ctx.lineWidth   = 2;
@@ -1345,12 +1353,12 @@ export class Renderer {
     ctx.fill();
     ctx.stroke();
 
-    // "♪ Play" label
-    ctx.fillStyle    = 'rgba(240,234,214,0.6)';
+    // Header label — changes to "✗ Wrong note" during red flash
+    ctx.fillStyle    = wrongFlash ? '#ff8888' : 'rgba(240,234,214,0.6)';
     ctx.font         = '11px Georgia, serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText('♪ Play', CARD_X + CARD_W / 2, CARD_Y + 6);
+    ctx.fillText(wrongFlash ? '✗ Wrong note' : '♪ Play', CARD_X + CARD_W / 2, CARD_Y + 6);
 
     // Note name — large
     ctx.fillStyle    = cue.status === 'hit' ? '#88ffaa' : CLR.TEXT;
@@ -1392,6 +1400,34 @@ export class Renderer {
       ctx.fillRect(CARD_X + BAR_PAD, BAR_Y, barW, BAR_H);
     }
 
+    ctx.restore();
+  }
+
+  /**
+   * Draw a depleting arc around the bottom-center mode indicator area
+   * showing remaining attack cooldown (400ms after each attack fires).
+   * Only visible in ATTACK mode. Disappears when cooldown expires.
+   */
+  _drawAttackCooldown(state, W, H) {
+    if (state.inputMode !== 'attack') return;
+    const now     = performance.now();
+    const coolEnd = state.attackCooldownEnd ?? 0;
+    if (now >= coolEnd) return;
+
+    const frac = (coolEnd - now) / 400;  // 1.0 → 0.0 over 400ms
+    const ctx  = this.ctx;
+    const cx   = W / 2;
+    const cy   = H - 44;  // matches future mode indicator pill centre
+    const r    = 22;
+    const startAngle = -Math.PI / 2;  // top of circle
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,60,60,${(0.5 + 0.5 * frac).toFixed(2)})`;
+    ctx.lineWidth   = 3;
+    ctx.lineCap     = 'round';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle, startAngle + frac * Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 

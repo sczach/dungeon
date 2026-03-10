@@ -19,6 +19,7 @@ const DEFAULTS = Object.freeze({
   showNoteLabels:  true,
   cueDisplayStyle: 'note',  // 'note' | 'qwerty' | 'staff'
   instrument:      'piano', // 'piano' | 'guitar' | 'voice' (guitar/voice = Coming Soon)
+  hardcoreMode:    false,   // when true, cue gating applies in ALL modes (summon + charge too)
 });
 
 // ─── CSS (injected once) ─────────────────────────────────────────────────────
@@ -114,7 +115,8 @@ const PANEL_CSS = `
   }
   .cw-cue-btn:hover { border-color: #8a7060; }
   #cw-chord-cues-btn,
-  #cw-note-labels-btn {
+  #cw-note-labels-btn,
+  #cw-hardcore-btn {
     background: #1e1e2e;
     border: 1px solid #4a4060;
     color: #f0ead6;
@@ -125,7 +127,8 @@ const PANEL_CSS = `
     cursor: pointer;
   }
   #cw-chord-cues-btn.active,
-  #cw-note-labels-btn.active {
+  #cw-note-labels-btn.active,
+  #cw-hardcore-btn.active {
     background: #1a3a1a;
     border-color: #44ff88;
     color: #44ff88;
@@ -236,6 +239,7 @@ export class SettingsUI {
     state.showNoteLabels  = merged.showNoteLabels  ?? DEFAULTS.showNoteLabels;
     state.cueDisplayStyle = merged.cueDisplayStyle || DEFAULTS.cueDisplayStyle;
     state.instrument      = merged.instrument      || DEFAULTS.instrument;
+    state.hardcoreMode    = merged.hardcoreMode    ?? DEFAULTS.hardcoreMode;
     console.log('[settings] loaded: sensitivity=' + state.audioThreshold
       + ' noteLabels=' + state.showNoteLabels
       + ' cueStyle=' + state.cueDisplayStyle
@@ -255,6 +259,7 @@ export class SettingsUI {
       showNoteLabels:  state.showNoteLabels,
       cueDisplayStyle: state.cueDisplayStyle || DEFAULTS.cueDisplayStyle,
       instrument:      state.instrument      || DEFAULTS.instrument,
+      hardcoreMode:    state.hardcoreMode    ?? DEFAULTS.hardcoreMode,
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
     console.log('[settings] saved to localStorage');
@@ -315,6 +320,16 @@ export class SettingsUI {
         <button class="cw-cue-btn" data-style="note">Note Names</button>
         <button class="cw-cue-btn" data-style="qwerty">QWERTY Keys</button>
         <button class="cw-cue-btn" data-style="staff">Staff</button>
+      </div>
+
+      <hr class="cw-sep">
+
+      <div class="cw-row">
+        <span class="cw-label">Hardcore Mode</span>
+        <button id="cw-hardcore-btn">${state.hardcoreMode ? 'ON' : 'OFF'}</button>
+      </div>
+      <div class="cw-row" style="margin-top:-6px">
+        <span class="cw-label" style="font-size:10px;color:#6a6050">Cue gating in all modes</span>
       </div>
 
     `;
@@ -382,6 +397,15 @@ export class SettingsUI {
     });
     this._refreshCueStyle(panel, state.cueDisplayStyle || DEFAULTS.cueDisplayStyle);
 
+    // Hardcore mode toggle
+    panel.querySelector('#cw-hardcore-btn').addEventListener('click', () => {
+      state.hardcoreMode = !state.hardcoreMode;
+      this._refreshHardcoreMode(panel, state.hardcoreMode);
+      this.saveSettings(state);
+      console.log('[settings] hardcoreMode →', state.hardcoreMode);
+    });
+    this._refreshHardcoreMode(panel, state.hardcoreMode ?? DEFAULTS.hardcoreMode);
+
     // Gear button toggles the panel
     const gearBtn = document.getElementById('btn-settings');
     if (gearBtn) {
@@ -439,6 +463,13 @@ export class SettingsUI {
     panel.querySelectorAll('.cw-cue-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.style === cueDisplayStyle);
     });
+  }
+
+  _refreshHardcoreMode(panel, hardcoreMode) {
+    const btn = panel.querySelector('#cw-hardcore-btn');
+    if (!btn) return;
+    btn.textContent = hardcoreMode ? 'ON' : 'OFF';
+    btn.classList.toggle('active', hardcoreMode);
   }
 
 }

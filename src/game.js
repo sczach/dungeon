@@ -129,6 +129,10 @@ function createInitialState() {
     chargeProgress:  0,      // 0.0–3.0 (0.8 s per segment)
     waveGraceEnd:    0,      // state.time when wave grace period ends (bases invulnerable until then)
 
+    // ── Note enforcement (attack mode cue gating) ─
+    attackCooldownEnd: 0,    // performance.now() when 400ms attack cooldown expires
+    wrongNoteFlash:    null, // { time: number } | null — drives cue card red flash (300ms)
+
     // ── Melody phase system ───────────────────
     currentPhase:         0,           // 0=Introduction, 1=Development, 2=Climax
     phaseTime:            0,           // elapsed seconds in current phase
@@ -1056,6 +1060,10 @@ function update(dt) {
           if (nowMs - state.damageNumbers[di].startTime >= 1200) {
             state.damageNumbers.splice(di, 1);
           }
+        }
+        // Wrong-note flash cleanup (300 ms)
+        if (state.wrongNoteFlash && nowMs - state.wrongNoteFlash.time >= 300) {
+          state.wrongNoteFlash = null;
         }
       }
       // No resource auto-tick — resources earned from kills only
