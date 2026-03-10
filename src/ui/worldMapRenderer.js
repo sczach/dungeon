@@ -240,6 +240,15 @@ export class WorldMapRenderer {
       }
       ctx.stroke();
 
+      // Last-played teal ring — distinct from the white selected ring
+      if (n.id === state.worldMap?.lastPlayedNodeId) {
+        ctx.strokeStyle = '#44ffcc';
+        ctx.lineWidth   = 3;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, NODE_R + 5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
       // Icon inside node
       ctx.font         = ICON_FONT;
       ctx.textAlign    = 'center';

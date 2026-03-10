@@ -400,24 +400,20 @@ function _handleVictory() {
     console.log(`[victory] ${state.starsEarned}★ acc=${state.noteAccuracy}% level=${level.id}`);
   }
 
-  // Tutorial auto-advance: T1→T2→T3→T4 skip VICTORY screen
-  const tutIdx = level ? TUTORIAL_SEQUENCE.indexOf(level.id) : -1;
-  if (tutIdx >= 0 && tutIdx < TUTORIAL_SEQUENCE.length - 1) {
-    // T1, T2, T3 — advance to the next tutorial's LEVEL_START
-    const nextId           = TUTORIAL_SEQUENCE[tutIdx + 1];
-    state.pendingLevel     = WORLD_MAP_NODES_BY_ID[nextId];
-    setScene(SCENE.LEVEL_START);
-  } else if (level?.id === 'tutorial-4') {
-    // T4 complete — tutorial series done, open world map
-    progression.tutorialComplete         = true;
+  // Mark tutorial complete when T4 is beaten (gates world map unlock)
+  if (level?.id === 'tutorial-4') {
+    progression.tutorialComplete = true;
     saveProgress(progression);
-    state._progression                   = progression;
-    state.worldMap.showTutorialComplete  = true;
-    setScene(SCENE.WORLD_MAP);
-  } else {
-    // Regular level — show full VICTORY screen with melody
-    setScene(SCENE.VICTORY);
+    state._progression           = progression;
   }
+
+  // Track last played node so world map can highlight it with a teal ring
+  if (level?.id) {
+    state.worldMap.lastPlayedNodeId = level.id;
+  }
+
+  // Always show VICTORY screen — player navigates back to world map themselves
+  setScene(SCENE.VICTORY);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
