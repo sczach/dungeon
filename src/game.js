@@ -133,6 +133,10 @@ function createInitialState() {
     attackCooldownEnd: 0,    // performance.now() when 400ms attack cooldown expires
     wrongNoteFlash:    null, // { time: number } | null — drives cue card red flash (300ms)
 
+    // ── Mode indicator (Fix 4) ────────────────────
+    lastAttackModeTime: 0,   // state.time of last frame spent in attack mode
+    attackSuggestPulse: false, // true when enemies present + not in attack mode for >5s
+
     // ── Melody phase system ───────────────────
     currentPhase:         0,           // 0=Introduction, 1=Development, 2=Climax
     phaseTime:            0,           // elapsed seconds in current phase
@@ -1032,6 +1036,17 @@ function update(dt) {
       attackSequenceSystem.update(dt, state);
       cueSystem.update(dt, state);
       promptManager.update(dt, state);
+
+      // ── Mode indicator tracking (Fix 4) ──────────────────────────────────
+      if (state.inputMode === 'attack') {
+        state.lastAttackModeTime = state.time;
+      }
+      {
+        const enemiesPresent = state.units.some(u => u.team === 'enemy' && u.alive);
+        state.attackSuggestPulse = enemiesPresent
+          && state.inputMode !== 'attack'
+          && (state.time - state.lastAttackModeTime) > 5;
+      }
 
       // ── Charge progress (held-note mechanic) ──────────────────────────────
       if (state.inputMode === 'charge' && state.chargeNote !== null) {

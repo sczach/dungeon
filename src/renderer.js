@@ -228,6 +228,8 @@ export class Renderer {
     this._drawPhaseLabel(state, W, H);
     this._drawCueCard(state, W, H);
     this._drawAttackCooldown(state, W, H);
+    this._drawModeIndicator(state, W, H);
+    this._drawUiTint(state, W, H);
     this._drawModeAnnouncement(state, W, H);
     this._drawTutorialOverlay(state, W, H);
     renderHUD(this.ctx, state, W, H);
@@ -1225,8 +1227,12 @@ export class Renderer {
     if (elapsed >= 1500) return;
     const ctx     = this.ctx;
     const alpha   = 1 - elapsed / 1500;
-    const label   = state.inputMode === 'summon' ? '♪ Summon Mode' : '⚔ Attack Mode';
-    const colour  = state.inputMode === 'summon' ? '#44ff88' : '#ff6666';
+    const label   = state.inputMode === 'summon' ? '♪ Summon Mode'
+                  : state.inputMode === 'charge' ? '⚡ Charge Mode'
+                  : '⚔ Attack Mode';
+    const colour  = state.inputMode === 'summon' ? '#44ff88'
+                  : state.inputMode === 'charge' ? '#ffaa22'
+                  : '#ff6666';
     ctx.save();
     ctx.globalAlpha  = alpha;
     ctx.font         = 'bold 42px Georgia, serif';
@@ -1428,6 +1434,82 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(cx, cy, r, startAngle, startAngle + frac * Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Persistent mode indicator — pill at bottom center (W/2, H-44).
+   * Mode colors: SUMMON=#2244aa, ATTACK=#aa2222, CHARGE=#aa6600.
+   * Pulsing red glow ring added when attackSuggestPulse is true.
+   */
+  _drawModeIndicator(state, W, H) {
+    const mode  = state.inputMode;
+    const ctx   = this.ctx;
+    const cx    = W / 2;
+    const cy    = H - 44;
+    const PW    = 120;
+    const PH    = 28;
+    const px    = cx - PW / 2;
+    const py    = cy - PH / 2;
+
+    const COLOR = { summon: '#2244aa', attack: '#aa2222', charge: '#aa6600' };
+    const LABEL = { summon: '♪ SUMMON',  attack: '⚔ ATTACK', charge: '⚡ CHARGE' };
+    const clr   = COLOR[mode] ?? '#444466';
+    const lbl   = LABEL[mode] ?? mode.toUpperCase();
+
+    // Auto-suggest pulse ring (red glow, oscillates when enemies present)
+    if (state.attackSuggestPulse) {
+      const pulse = 0.4 + 0.35 * Math.sin(performance.now() / 1000 * Math.PI * 2.4);
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,60,60,${pulse.toFixed(2)})`;
+      ctx.lineWidth   = 4;
+      ctx.beginPath();
+      ctx.roundRect?.(px - 6, py - 6, PW + 12, PH + 12, 10) ??
+        ctx.rect(px - 6, py - 6, PW + 12, PH + 12);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Pill background
+    ctx.save();
+    ctx.fillStyle   = clr + 'cc';   // mode color at 80% opacity
+    ctx.strokeStyle = clr;
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.roundRect?.(px, py, PW, PH, 8) ?? ctx.rect(px, py, PW, PH);
+    ctx.fill();
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle    = '#ffffff';
+    ctx.font         = 'bold 13px Georgia, serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(lbl, cx, cy + 1);
+    ctx.restore();
+  }
+
+  /**
+   * Thin colored edge vignette strips (4px, 40% alpha) matching the current mode.
+   * Drawn as 4 fillRects along canvas edges — cheap and visually clear.
+   */
+  _drawUiTint(state, W, H) {
+    const mode  = state.inputMode;
+    const COLOR = { summon: '#2244aa', attack: '#aa2222', charge: '#aa6600' };
+    const hex   = COLOR[mode] ?? '#444466';
+    // Parse hex to rgba
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const fill = `rgba(${r},${g},${b},0.40)`;
+    const T    = 4;  // strip thickness px
+    const ctx  = this.ctx;
+    ctx.save();
+    ctx.fillStyle = fill;
+    ctx.fillRect(0,     0,     W, T);   // top
+    ctx.fillRect(0,     H - T, W, T);   // bottom
+    ctx.fillRect(0,     0,     T, H);   // left
+    ctx.fillRect(W - T, 0,     T, H);   // right
     ctx.restore();
   }
 
