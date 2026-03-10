@@ -55,9 +55,9 @@ import { LANE_Y, LANE_HEIGHT } from '../constants.js';
 /** @type {Array<null|{hp,damage,speed,range,attackSpeed,radius}>} */
 const TIER_STATS = [
   null,
-  { hp:  30, damage:  8, speed: 60, range: 50, attackSpeed: 1.0, radius: 12 },
-  { hp:  60, damage: 15, speed: 45, range: 60, attackSpeed: 0.8, radius: 16 },
-  { hp: 120, damage: 25, speed: 35, range: 70, attackSpeed: 0.6, radius: 20 },
+  { hp:  30, damage:  8, speed: 50, range: 50, attackSpeed: 1.0, radius: 12 },  // standard
+  { hp:  60, damage: 15, speed: 50, range: 60, attackSpeed: 0.8, radius: 16 },  // standard
+  { hp: 120, damage: 25, speed: 80, range: 70, attackSpeed: 0.6, radius: 20 },  // fast — telegraphed with speed trail
 ];
 
 export class Unit {

@@ -843,8 +843,7 @@ function spawnEnemyUnit() {
   const x      = spawnBase.x - BASE_WIDTH * W / 2 - 20;   // just left of this base
 
   const unit = new Unit('enemy', tier, x, y);
-  // Global 0.5× enemy speed — makes early game much more manageable
-  unit.speed *= 0.5;
+  // Speed set in TIER_STATS: T1/T2=50 px/s (standard), T3=80 px/s (fast — visual trail)
   // Level difficulty modifier scales enemy HP (difficultyMod < 1 = easier, > 1 = harder)
   const dMod = state.currentLevel?.difficultyMod ?? 1.0;
   if (dMod !== 1.0) {
@@ -898,7 +897,7 @@ function spawnPlayerUnit(tier, free = false, unitType = null) {
     case 'tank':
       unit.hp = unit.maxHp = 200;
       unit.damage      = 6;
-      unit.speed       = 40;
+      unit.speed       = 35;   // slow — holds midfield line
       unit.range       = 60;
       unit.attackSpeed = 0.7;
       unit.radius      = 20;
@@ -911,7 +910,7 @@ function spawnPlayerUnit(tier, free = false, unitType = null) {
     case 'dps':
       unit.hp = unit.maxHp = 25;
       unit.damage      = 20;
-      unit.speed       = 100;
+      unit.speed       = 60;   // fast charge but not instant
       unit.range       = 50;
       unit.attackSpeed = 1.5;
       unit.radius      = 10;
@@ -923,7 +922,7 @@ function spawnPlayerUnit(tier, free = false, unitType = null) {
     case 'ranged':
       unit.hp = unit.maxHp = 40;
       unit.damage      = 12;
-      unit.speed       = 70;
+      unit.speed       = 45;   // advance slowly, stop at range
       unit.range       = 180;
       unit.attackSpeed = 0.8;
       unit.radius      = 12;
@@ -935,12 +934,12 @@ function spawnPlayerUnit(tier, free = false, unitType = null) {
     case 'mage':
       unit.hp = unit.maxHp = 50;
       unit.damage        = 8;
-      unit.speed         = 30;
+      unit.speed         = 20;   // stays near base, slow patrol
       unit.range         = 120;
       unit.attackSpeed   = 1.0;
       unit.radius        = 14;
       unit.role          = 'mage';
-      unit.pulseCooldown = 1.5;      // first pulse at 1.5 s (sooner than 3 s repeat)
+      unit.pulseCooldown = 1.5;  // first pulse at 1.5 s (sooner than 3 s repeat)
       unit.patrolAnchorX = x;
       unit.patrolAnchorY = laneCenter;
       break;

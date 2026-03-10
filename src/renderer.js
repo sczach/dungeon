@@ -648,7 +648,18 @@ export class Renderer {
       ctx.stroke();
 
     } else {
-      // Tier 3 — deep crimson, purple glow ring, 4 spikes, faster pulse (0.5 s)
+      // Tier 3 — FAST unit (80 px/s). Speed trail: 3 fading arcs behind movement direction.
+      // Enemy units march left, so trail extends to the right (+x direction from unit).
+      for (let ti = 1; ti <= 3; ti++) {
+        const trailX  = unit.x + ti * 8;  // offset right (behind marching direction)
+        const trailR  = r * (1 - ti * 0.18);
+        ctx.beginPath();
+        ctx.arc(trailX, unit.y, Math.max(2, trailR), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(200,50,50,${0.18 - ti * 0.05})`;
+        ctx.fill();
+      }
+
+      // Deep crimson, purple glow ring, 4 spikes, faster pulse (0.5 s)
       const scale = 1 + 0.06 * Math.sin(t * Math.PI * 4);
       const vr    = r * scale;
 
