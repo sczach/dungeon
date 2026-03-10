@@ -190,6 +190,23 @@ export class Renderer {
   // ─────────────────────────────────────────
 
   _drawPlaying(state, W, H) {
+    // ── Screen shake ──────────────────────────────────────────────────────
+    let shaking = false;
+    if (state.shakeTime > 0 && state.shakeIntensity > 0) {
+      const age = performance.now() - state.shakeTime;
+      if (age < 300) {
+        const intensity = state.shakeIntensity * (1 - age / 300);
+        this.ctx.save();
+        this.ctx.translate(
+          (Math.random() * 2 - 1) * intensity,
+          (Math.random() * 2 - 1) * intensity,
+        );
+        shaking = true;
+      } else {
+        state.shakeTime = 0;
+      }
+    }
+
     // Map must come first — it fills the entire canvas with the grass background.
     // All UI overlays (tablature, cues, announcements) must come AFTER.
     this._drawMap(W, H);
@@ -197,14 +214,18 @@ export class Renderer {
     this._drawUnits(state);
     this._drawLightningBolts(state, W, H);
     this._drawProjectiles(state);
+    this._drawDamageNumbers(state);
     this._drawEnemySequences(state, W, H);
     this._drawTablature(state, W, H);       // top-of-screen summon prompt (above map)
+    this._drawChargeBar(state, W, H);       // charge bar (charge mode only)
     this._drawWaveAnnouncement(state, W, H);
     this._drawPhaseAnnouncement(state, W, H);
     this._drawPhaseLabel(state, W, H);
     this._drawCueCard(state, W, H);
     this._drawModeAnnouncement(state, W, H);
     renderHUD(this.ctx, state, W, H);
+
+    if (shaking) this.ctx.restore();
   }
 
   // ─────────────────────────────────────────
@@ -494,6 +515,20 @@ export class Renderer {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${Math.round(hpFrac * 100)}%`, x + w / 2, y + h / 2);
+
+    // Protected overlay — shown during wave grace period when base is invulnerable
+    if (isEnemy && !base.vulnerable && !base.isDestroyed()) {
+      ctx.fillStyle = 'rgba(100, 160, 255, 0.18)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(140, 200, 255, 0.6)';
+      ctx.lineWidth   = 2;
+      ctx.strokeRect(x, y, w, h);
+      ctx.font         = `bold ${Math.max(8, Math.min(11, w * 0.14))}px Georgia, serif`;
+      ctx.fillStyle    = 'rgba(160, 210, 255, 0.95)';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('\uD83D\uDEE1 Protected', x + w / 2, barY + barH + 4);
+    }
 
     ctx.restore();
   }
@@ -789,16 +824,33 @@ export class Renderer {
       const b    = bolts[i];
       const age  = now - b.startTime;
       if (age >= b.duration) continue;
-      const alpha = 1 - age / b.duration;   // 1.0 → 0.0 over duration
-      const segs  = b.segments;
+      const alpha      = 1 - age / b.duration;   // 1.0 → 0.0 over duration
+      const segs       = b.segments;
+      const cl         = b.chargeLevel || 0;      // 0=normal, 1/2/3=charged
       if (!segs || segs.length < 2) continue;
 
-      // Impact flash — thin yellow screen overlay for first 20 % of lifetime
+      // Impact flash — scales with charge level
       if (alpha > 0.80) {
-        const flashA = (alpha - 0.80) / 0.20 * 0.07;
-        ctx.fillStyle = `rgba(255, 255, 160, ${flashA.toFixed(3)})`;
+        const baseFlash = cl === 3 ? 0.20 : 0.07;
+        const flashA    = (alpha - 0.80) / 0.20 * baseFlash;
+        ctx.fillStyle   = cl >= 3
+          ? `rgba(180, 220, 255, ${flashA.toFixed(3)})`
+          : `rgba(255, 255, 160, ${flashA.toFixed(3)})`;
         ctx.fillRect(0, 0, W, H);
       }
+
+      // Bolt colour per charge level: normal=yellow, 1=blue-white, 2=cyan, 3=white
+      const glowColor  = cl === 0 ? 'rgba(255, 220, 60, ' :
+                         cl === 1 ? 'rgba(80, 160, 255, '  :
+                         cl === 2 ? 'rgba(60, 220, 255, '  :
+                                    'rgba(200, 220, 255, ';
+      const coreColor  = cl === 0 ? 'rgba(255, 255, 255, ' :
+                         cl === 1 ? 'rgba(180, 210, 255, '  :
+                         cl === 2 ? 'rgba(160, 240, 255, '  :
+                                    'rgba(255, 255, 255, ';
+      const outerW     = cl === 0 ? 6 : cl === 1 ? 8 : cl === 2 ? 10 : 14;
+      const innerW     = cl === 0 ? 2 : cl === 1 ? 3 : cl === 2 ? 4  : 6;
+      const glowBlur   = cl === 0 ? 12 : cl === 1 ? 16 : cl === 2 ? 20 : 28;
 
       // Build the jagged path once, reuse for both draw calls
       ctx.beginPath();
@@ -807,25 +859,25 @@ export class Renderer {
         ctx.lineTo(segs[j].x, segs[j].y);
       }
 
-      // Outer glow — wide, yellow, half opacity
-      ctx.strokeStyle = `rgba(255, 220, 60, ${(alpha * 0.55).toFixed(3)})`;
-      ctx.lineWidth   = 6;
+      // Outer glow
+      ctx.strokeStyle = `${glowColor}${(alpha * 0.55).toFixed(3)})`;
+      ctx.lineWidth   = outerW;
       ctx.lineCap     = 'round';
       ctx.lineJoin    = 'round';
-      ctx.shadowBlur  = 12;
-      ctx.shadowColor = 'rgba(255, 200, 0, 0.8)';
+      ctx.shadowBlur  = glowBlur;
+      ctx.shadowColor = `${glowColor}0.8)`;
       ctx.stroke();
 
-      // Rebuild path for inner core (cannot reuse after stroke without re-build)
+      // Rebuild path for inner core
       ctx.beginPath();
       ctx.moveTo(segs[0].x, segs[0].y);
       for (let j = 1; j < segs.length; j++) {
         ctx.lineTo(segs[j].x, segs[j].y);
       }
 
-      // Inner core — narrow, bright white
-      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
-      ctx.lineWidth   = 2;
+      // Inner core
+      ctx.strokeStyle = `${coreColor}${alpha.toFixed(3)})`;
+      ctx.lineWidth   = innerW;
       ctx.shadowBlur  = 0;
       ctx.stroke();
     }
@@ -861,6 +913,141 @@ export class Renderer {
       ctx.fill();
     }
     ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // ─────────────────────────────────────────
+  // Floating damage numbers
+  // ─────────────────────────────────────────
+
+  /**
+   * Draw floating damage / effect numbers from state.damageNumbers[].
+   * Each entry: { x, y, value, startTime, color, label? }
+   * Numbers float upward ~40 px and fade out over 1 200 ms.
+   * @param {object} state
+   */
+  _drawDamageNumbers(state) {
+    const nums = state.damageNumbers;
+    if (!nums || nums.length === 0) return;
+    const ctx      = this.ctx;
+    const now      = performance.now();
+    const LIFETIME = 1200;
+    const RISE     = 40;    // px to float upward over full lifetime
+
+    ctx.save();
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font         = 'bold 18px Georgia, serif';
+    ctx.shadowBlur   = 6;
+    ctx.shadowColor  = 'rgba(0, 0, 0, 0.85)';
+
+    for (let i = 0; i < nums.length; i++) {
+      const n        = nums[i];
+      const t        = now - n.startTime;
+      if (t >= LIFETIME) continue;
+      const progress = t / LIFETIME;
+      const alpha    = progress > 0.6 ? 1 - (progress - 0.6) / 0.4 : 1.0;
+      const dy       = -RISE * progress;
+      const text     = n.label ?? `+${n.value}`;
+
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle   = n.color || '#ffffff';
+      ctx.fillText(text, n.x, n.y + dy);
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur  = 0;
+    ctx.restore();
+  }
+
+  // ─────────────────────────────────────────
+  // Charge bar
+  // ─────────────────────────────────────────
+
+  /**
+   * Draw the 3-segment charge-level bar when state.inputMode === 'charge'.
+   * Position: just above the mode-button row (mirrors hud.js PIANO_H + MODE_BTN_H).
+   * @param {object} state
+   * @param {number} W
+   * @param {number} H
+   */
+  _drawChargeBar(state, W, H) {
+    if (state.inputMode !== 'charge') return;
+    const ctx      = this.ctx;
+    const progress = state.chargeProgress || 0;   // 0.0–3.0
+
+    const BAR_W   = 240;
+    const BAR_H   = 16;
+    const SEG_GAP = 4;
+    const SEGS    = 3;
+    const segW    = (BAR_W - SEG_GAP * (SEGS - 1)) / SEGS;
+    const cx      = W / 2;
+
+    // Sit just above the mode-buttons + piano panel (PIANO_H=70, MODE_BTN_H=48)
+    const ABOVE_PANEL = 70 + 48;
+    const barY        = H - ABOVE_PANEL - BAR_H - 12;
+    const barX        = cx - BAR_W / 2;
+
+    ctx.save();
+
+    // Background pill
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(barX - 10, barY - 8, BAR_W + 20, BAR_H + 30, 8);
+    } else {
+      ctx.rect(barX - 10, barY - 8, BAR_W + 20, BAR_H + 30);
+    }
+    ctx.fill();
+
+    // Per-segment colours: blue → cyan → white
+    const SEG_COLORS = [
+      { empty: '#1a2a4a', fill: '#4488ff', glow: 'rgba(68,136,255,0.7)' },
+      { empty: '#1a3a4a', fill: '#22ccff', glow: 'rgba(34,204,255,0.7)' },
+      { empty: '#3a3a4a', fill: '#ddeeff', glow: 'rgba(200,220,255,0.9)' },
+    ];
+
+    for (let s = 0; s < SEGS; s++) {
+      const sx     = barX + s * (segW + SEG_GAP);
+      const filled = Math.max(0, Math.min(1, progress - s));
+      const col    = SEG_COLORS[s];
+
+      // Empty track
+      ctx.fillStyle = col.empty;
+      ctx.fillRect(sx, barY, segW, BAR_H);
+
+      // Filled portion
+      if (filled > 0) {
+        ctx.fillStyle    = col.fill;
+        ctx.shadowBlur   = 10;
+        ctx.shadowColor  = col.glow;
+        ctx.fillRect(sx, barY, segW * filled, BAR_H);
+        ctx.shadowBlur   = 0;
+      }
+
+      // Border
+      ctx.strokeStyle = filled >= 1 ? col.fill : '#2a3a5a';
+      ctx.lineWidth   = 1;
+      ctx.strokeRect(sx, barY, segW, BAR_H);
+    }
+
+    // Label row: ⚡ icons + note name (or idle hint)
+    ctx.font         = 'bold 13px Georgia, serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    const labelY = barY + BAR_H + 10;
+
+    if (state.chargeNote !== null) {
+      const level  = Math.min(3, Math.floor(progress));
+      const icons  = '⚡'.repeat(Math.max(1, level));
+      ctx.fillStyle = progress >= 3 ? '#ddeeff' : progress >= 2 ? '#22ccff' : '#4488ff';
+      ctx.fillText(`${icons}  ${state.chargeNote}`, cx, labelY);
+    } else {
+      ctx.font      = '11px Georgia, serif';
+      ctx.fillStyle = '#7a8898';
+      ctx.fillText('Hold a key to charge', cx, labelY);
+    }
+
     ctx.restore();
   }
 
@@ -1064,16 +1251,6 @@ export class Renderer {
     ctx.font         = '14px Georgia, serif';
     ctx.fillStyle    = 'rgba(240,234,214,0.7)';
     ctx.fillText(`▸ ${state.phaseLabel}`, W - 12, 12);
-
-    // If any alive enemy base is invulnerable, show a small warning
-    const enemyBases = state.enemyBases ?? (state.enemyBase ? [state.enemyBase] : []);
-    const anyInvulnerable = enemyBases.some(b => !b.isDestroyed() && !b.vulnerable);
-    if (anyInvulnerable) {
-      ctx.font      = '12px Georgia, serif';
-      ctx.fillStyle = 'rgba(255,180,60,0.8)';
-      const label = enemyBases.length > 1 ? 'Bases invulnerable' : 'Base invulnerable';
-      ctx.fillText(label, W - 12, 30);
-    }
     ctx.restore();
   }
 

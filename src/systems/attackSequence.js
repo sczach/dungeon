@@ -46,8 +46,11 @@ const STUN_DURATION = 2;
 /** Damage dealt by a direct attack (miss bolt) before accuracy multiplier. */
 const BASE_DIRECT_DAMAGE = 8;
 
-/** Duration of the lightning bolt canvas animation in milliseconds. */
+/** Base duration of the lightning bolt canvas animation in milliseconds. */
 const BOLT_DURATION_MS = 200;
+
+/** Shake threshold: hits above this damage trigger screen shake. */
+const SHAKE_THRESHOLD = 20;
 
 // ─── Lightning helpers ────────────────────────────────────────────────────────
 
@@ -245,9 +248,13 @@ export class AttackSequenceSystem {
       nearestUnit.hp -= damage;
       if (nearestUnit.hp <= 0) nearestUnit.alive = false;
       this._fireBolt(srcX, srcY, nearestUnit.x, nearestUnit.y, state);
+      this._pushDmgNum(nearestUnit.x, nearestUnit.y, Math.round(damage), '#ffcc44', state);
+      if (damage >= SHAKE_THRESHOLD) this._triggerShake(4, state);
     } else if (nearestBase) {
       nearestBase.takeDamage(damage);
       this._fireBolt(srcX, srcY, nearestBase.x, nearestBase.y, state);
+      this._pushDmgNum(nearestBase.x, nearestBase.y, Math.round(damage), '#ff6644', state);
+      if (damage >= SHAKE_THRESHOLD) this._triggerShake(6, state);
     }
   }
 
@@ -261,12 +268,17 @@ export class AttackSequenceSystem {
     if (unit.tier === 1) {
       unit.hp    = 0;
       unit.alive = false;
+      this._pushDmgNum(unit.x, unit.y, unit.maxHp, '#ff8800', state);
     } else if (unit.tier === 2) {
-      unit.hp = Math.max(0, unit.hp - unit.maxHp * 0.6);
+      const dealt = Math.round(unit.maxHp * 0.6);
+      unit.hp = Math.max(0, unit.hp - dealt);
       if (unit.hp <= 0) unit.alive = false;
+      this._pushDmgNum(unit.x, unit.y, dealt, '#ffcc44', state);
+      if (dealt >= SHAKE_THRESHOLD) this._triggerShake(4, state);
     } else {
       unit.stunned   = true;
       unit.stunTimer = STUN_DURATION;
+      this._pushDmgNum(unit.x, unit.y, 0, '#cc88ff', state, 'STUN');
     }
     unit.attackSeqProgress = 0;
 
@@ -285,14 +297,139 @@ export class AttackSequenceSystem {
    * @param {number} x1 @param {number} y1 — source
    * @param {number} x2 @param {number} y2 — target
    * @param {object} state
+   * @param {number} [chargeLevel] — 0=normal, 1/2/3=charged (affects duration + visual)
    */
-  _fireBolt(x1, y1, x2, y2, state) {
+  _fireBolt(x1, y1, x2, y2, state, chargeLevel = 0) {
     if (!state.lightningBolts) return;
     state.lightningBolts.push({
       x1, y1, x2, y2,
-      startTime: performance.now(),
-      duration:  BOLT_DURATION_MS,
-      segments:  generateLightningSegments(x1, y1, x2, y2),
+      startTime:   performance.now(),
+      duration:    BOLT_DURATION_MS * (1 + chargeLevel * 0.5),
+      segments:    generateLightningSegments(x1, y1, x2, y2),
+      chargeLevel: chargeLevel || 0,
     });
+  }
+
+  /**
+   * Push a floating damage number into state.damageNumbers.
+   * @param {number} x @param {number} y — world position
+   * @param {number} value — numeric damage, or 0 for label-only
+   * @param {string} color — CSS colour string
+   * @param {object} state
+   * @param {string} [label] — optional override label (e.g. 'STUN')
+   */
+  _pushDmgNum(x, y, value, color, state, label = null) {
+    if (!state.damageNumbers) return;
+    state.damageNumbers.push({ x, y, value, color, label, startTime: performance.now() });
+  }
+
+  /**
+   * Trigger canvas screen shake.
+   * @param {number} intensity — shake amplitude in logical pixels
+   * @param {object} state
+   */
+  _triggerShake(intensity, state) {
+    if (state.shakeTime === undefined) return;
+    state.shakeTime      = performance.now();
+    state.shakeIntensity = intensity;
+  }
+
+  /**
+   * Fire a charged attack at the appropriate power level.
+   * Called by keyboard.js when the player releases a held note in CHARGE mode.
+   *
+   * Level 1 (0.8–1.6 s hold): 20 dmg to nearest unit, or 12 to base
+   * Level 2 (1.6–2.4 s hold): 35 dmg to nearest unit + pierce 15 to base (2 bolts)
+   * Level 3 (≥2.4 s hold):    AOE — 15 dmg ALL enemy units + 25 dmg to all bases
+   *
+   * @param {1|2|3}  chargeLevel
+   * @param {string} _note   — held note (unused; reserved for future pitch-based effects)
+   * @param {object} state
+   */
+  fireChargedAttack(chargeLevel, _note, state) {
+    if (!state.playerBase) return;
+    const srcX    = state.playerBase.x;
+    const srcY    = state.playerBase.y;
+    const units   = state.units;
+    const allBases = state.enemyBases ?? (state.enemyBase ? [state.enemyBase] : []);
+
+    // Helper: find nearest alive enemy unit
+    const findNearestUnit = () => {
+      let nearest = null, nearestDist = Infinity;
+      for (let i = 0; i < units.length; i++) {
+        const u = units[i];
+        if (!u.alive || u.team !== 'enemy') continue;
+        const d = Math.hypot(u.x - srcX, u.y - srcY);
+        if (d < nearestDist) { nearestDist = d; nearest = u; }
+      }
+      return nearest;
+    };
+
+    // Helper: find nearest alive enemy base
+    const findNearestBase = () => {
+      let nearest = null, nearestDist = Infinity;
+      for (const b of allBases) {
+        if (b.isDestroyed()) continue;
+        const d = Math.hypot(b.x - srcX, b.y - srcY);
+        if (d < nearestDist) { nearestDist = d; nearest = b; }
+      }
+      return nearest;
+    };
+
+    if (chargeLevel === 1) {
+      // Single heavy bolt
+      const unit = findNearestUnit();
+      if (unit) {
+        unit.hp -= 20;
+        if (unit.hp <= 0) unit.alive = false;
+        this._pushDmgNum(unit.x, unit.y, 20, '#44aaff', state);
+        this._fireBolt(srcX, srcY, unit.x, unit.y, state, 1);
+        this._triggerShake(3, state);
+      } else {
+        const base = findNearestBase();
+        if (base) {
+          base.takeDamage(12);
+          this._pushDmgNum(base.x, base.y, 12, '#4488ff', state);
+          this._fireBolt(srcX, srcY, base.x, base.y, state, 1);
+          this._triggerShake(5, state);
+        }
+      }
+
+    } else if (chargeLevel === 2) {
+      // Forked bolt: heavy hit to nearest unit AND pierce to base
+      const unit = findNearestUnit();
+      if (unit) {
+        unit.hp -= 35;
+        if (unit.hp <= 0) unit.alive = false;
+        this._pushDmgNum(unit.x, unit.y, 35, '#44ccff', state);
+        this._fireBolt(srcX, srcY, unit.x, unit.y, state, 2);
+        this._triggerShake(5, state);
+      }
+      // Pierce: also strike the base regardless of unit presence
+      const base = findNearestBase();
+      if (base) {
+        base.takeDamage(15);
+        this._pushDmgNum(base.x, base.y + 20, 15, '#4488ff', state);
+        this._fireBolt(srcX, srcY, base.x, base.y, state, 2);
+      }
+
+    } else {
+      // Level 3 AOE: lightning storm — all enemies + all bases
+      for (let i = 0; i < units.length; i++) {
+        const u = units[i];
+        if (!u.alive || u.team !== 'enemy') continue;
+        u.hp -= 15;
+        if (u.hp <= 0) u.alive = false;
+        this._pushDmgNum(u.x, u.y, 15, '#ffffff', state);
+        this._fireBolt(srcX, srcY, u.x, u.y, state, 3);
+      }
+      for (const b of allBases) {
+        if (b.isDestroyed()) continue;
+        b.takeDamage(25);
+        this._pushDmgNum(b.x, b.y, 25, '#aaddff', state);
+        this._fireBolt(srcX, srcY, b.x, b.y, state, 3);
+      }
+      this._triggerShake(10, state);
+    }
   }
 }

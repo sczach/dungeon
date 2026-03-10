@@ -114,9 +114,18 @@ function createInitialState() {
 
     // ── Entities ──────────────────────────────
     units: [],               // Unit[] — both player and enemy units
-    lightningBolts: [],      // {x1,y1,x2,y2,startTime,duration,segments}[] — active bolt animations
+    lightningBolts: [],      // {x1,y1,x2,y2,startTime,duration,segments,chargeLevel}[] — active bolt animations
     attackMisses:   0,       // notes pressed in ATTACK mode with no enemy match (accuracy tracking)
     projectiles:    [],      // {x,y,tx,ty,startTime,travelTime,team}[] — ranged unit shot visuals
+    damageNumbers:  [],      // {x,y,value,startTime,color}[] — floating hit numbers
+    shakeTime:      0,       // performance.now() when shake started (0 = none)
+    shakeIntensity: 0,       // px amplitude of shake
+
+    // ── Charge mechanic ───────────────────────
+    chargeNote:      null,   // string|null — note held in charge mode
+    chargeStartTime: 0,      // performance.now() when charge hold started
+    chargeProgress:  0,      // 0.0–3.0 (0.8 s per segment)
+    waveGraceEnd:    0,      // state.time when wave grace period ends (bases invulnerable until then)
 
     // ── Melody phase system ───────────────────
     currentPhase:         0,           // 0=Introduction, 1=Development, 2=Climax
@@ -129,7 +138,7 @@ function createInitialState() {
     currentCue:           null,        // {note, startTime, deadline, status} | null
 
     // ── Mode & settings ───────────────────────
-    inputMode:       'summon',   // 'summon' | 'attack' — toggled by Space
+    inputMode:       'summon',   // 'summon' | 'attack' | 'charge' — toggled by Space
     modeAnnounce:    0,          // performance.now() timestamp; 0 = none
     showNoteLabels:  false,      // overridden by loadSettings()
     difficulty:      'medium',   // overridden by loadSettings()
@@ -605,13 +614,12 @@ function startGame(levelConfig) {
   // Announce Wave 1
   state.waveAnnounce = performance.now();
 
-  // Set initial phase label and enemy base vulnerability (all bases invulnerable until Climax)
+  // Set initial phase label — bases always start vulnerable (grace period handled per-wave)
   {
     const phases = level.phases ?? DEFAULT_PHASES;
     state.phaseLabel = phases[0]?.label ?? 'Introduction';
-    const startVulnerable = (phases.length <= 1);
     for (let i = 0; i < state.enemyBases.length; i++) {
-      state.enemyBases[i].vulnerable = startVulnerable;
+      state.enemyBases[i].vulnerable = true;
     }
     state.phaseAnnounce = performance.now();
   }
@@ -867,6 +875,13 @@ function update(dt) {
       cueSystem.update(dt, state);
       promptManager.update(dt, state);
 
+      // ── Charge progress (held-note mechanic) ──────────────────────────────
+      if (state.inputMode === 'charge' && state.chargeNote !== null) {
+        const elapsedSec     = (performance.now() - state.chargeStartTime) / 1000;
+        const stabilityMult  = state.audio.pitchStable ? 1.3 : 1.0;
+        state.chargeProgress = Math.min(3.0, (elapsedSec / 0.8) * stabilityMult);
+      }
+
       // ── Lightning bolt cleanup (remove expired bolts) ──────────────────
       {
         const nowMs = performance.now();
@@ -882,6 +897,12 @@ function update(dt) {
             state.projectiles.splice(pi, 1);
           }
         }
+        // Damage number cleanup (1200 ms lifetime)
+        for (let di = state.damageNumbers.length - 1; di >= 0; di--) {
+          if (nowMs - state.damageNumbers[di].startTime >= 1200) {
+            state.damageNumbers.splice(di, 1);
+          }
+        }
       }
       // No resource auto-tick — resources earned from kills only
 
@@ -891,6 +912,18 @@ function update(dt) {
       if (targetWave > state.wave) {
         state.wave         = targetWave;
         state.waveAnnounce = performance.now();
+        // 10-second grace period: bases invulnerable at start of each new wave
+        state.waveGraceEnd = state.time + 10;
+        for (let bi = 0; bi < state.enemyBases.length; bi++) {
+          if (!state.enemyBases[bi].isDestroyed()) state.enemyBases[bi].vulnerable = false;
+        }
+      }
+
+      // ── Wave grace period — re-enable vulnerability once grace window closes ──
+      if (state.waveGraceEnd > 0 && state.time >= state.waveGraceEnd) {
+        for (let bi = 0; bi < state.enemyBases.length; bi++) {
+          if (!state.enemyBases[bi].isDestroyed()) state.enemyBases[bi].vulnerable = true;
+        }
       }
 
       // ── Dynamic spawn interval: −0.5 s every 60 s, floor 2 s ────────────
@@ -1022,11 +1055,6 @@ function update(dt) {
             state.phrasePlaysThisPhase = 0;
             state.phaseLabel        = phases[nextIdx].label ?? `Phase ${nextIdx + 1}`;
             state.phaseAnnounce     = performance.now();
-            // All enemy bases become vulnerable only in the final (Climax) phase
-            const nowVulnerable = (nextIdx >= phases.length - 1);
-            for (let bi = 0; bi < state.enemyBases.length; bi++) {
-              state.enemyBases[bi].vulnerable = nowVulnerable;
-            }
             console.log(`[phase] → ${state.phaseLabel} (phase ${nextIdx + 1}/${phases.length})`);
           }
         }
@@ -1038,19 +1066,12 @@ function update(dt) {
         break;
       }
 
-      // Victory only available in the final phase (Climax)
-      if (state.currentPhase >= ((state.currentLevel?.phases ?? DEFAULT_PHASES).length - 1)) {
-        // All enemy bases must be destroyed to win by base destruction
-        let wonByBase = state.enemyBases.length > 0 && state.enemyBases.every(b => b.isDestroyed());
-
-        // Performance win: ≥2 complete sequences in Climax with ≥70 % accuracy
-        const tab         = state.tablature;
-        const totalNotes  = (tab.totalHits || 0) + (tab.totalMisses || 0);
-        const accuracy    = totalNotes > 0 ? (tab.totalHits || 0) / totalNotes : 1;
-        const wonByPhrase = state.phrasePlaysThisPhase >= 2 && accuracy >= 0.70;
-
-        if (wonByBase || wonByPhrase) {
-          // Compute accuracy and persist result
+      // Victory: all enemy bases destroyed (the only win condition)
+      {
+        const wonByBase = state.enemyBases.length > 0 && state.enemyBases.every(b => b.isDestroyed());
+        if (wonByBase) {
+          const tab        = state.tablature;
+          const totalNotes = (tab.totalHits || 0) + (tab.totalMisses || 0);
           state.noteAccuracy = totalNotes > 0
             ? Math.round((tab.totalHits || 0) / totalNotes * 100)
             : 100;
@@ -1059,8 +1080,7 @@ function update(dt) {
             state.starsEarned = computeStars(state.noteAccuracy, state.currentLevel);
             progression = awardStars(state.currentLevel.id, state.starsEarned, progression);
             saveProgress(progression);
-            const why = wonByBase ? 'base destroyed' : 'phrase performance';
-            console.log(`[victory] ${state.starsEarned}★ acc=${state.noteAccuracy}% via ${why}`);
+            console.log(`[victory] ${state.starsEarned}★ acc=${state.noteAccuracy}% via base destroyed`);
           }
           setScene(SCENE.VICTORY);
           break;
@@ -1128,6 +1148,10 @@ initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) =
   state.inputMode    = mode;
   state.modeAnnounce = performance.now();
   if (mode === 'summon') tablatureSystem.refresh(state);
+  if (mode !== 'charge') {
+    state.chargeNote     = null;
+    state.chargeProgress = 0;
+  }
   console.log(`[mode] tapped → ${mode}`);
 });
 

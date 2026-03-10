@@ -139,47 +139,52 @@ export function renderHUD(ctx, state, W, H) {
 
   // Mode badge — top-right of panel row
   if (state.inputMode) {
-    const isSummon = state.inputMode === 'summon';
+    const mode  = state.inputMode;
+    const color = mode === 'summon' ? '#44ff88' : mode === 'attack' ? '#ff6666' : '#4488ff';
+    const label = mode === 'summon' ? '♪ SUMMON' : mode === 'attack' ? '⚔ ATTACK' : '⚡ CHARGE';
     ctx.font      = 'bold 11px Georgia, serif';
-    ctx.fillStyle = isSummon ? '#44ff88' : '#ff6666';
+    ctx.fillStyle = color;
     ctx.textAlign = 'right';
-    ctx.fillText(isSummon ? '♪ SUMMON' : '⚔ ATTACK', W - PAD, hintY);
+    ctx.fillText(label, W - PAD, hintY);
   }
 
-  // ── SUMMON / ATTACK mode toggle buttons (above piano, mobile-friendly) ──
-  const modeBtnY = H - PIANO_H - MODE_BTN_H;
-  const isSummon = state.inputMode === 'summon';
+  // ── SUMMON / ATTACK / CHARGE mode toggle buttons (above piano, mobile-friendly) ──
+  const modeBtnY  = H - PIANO_H - MODE_BTN_H;
+  const curMode   = state.inputMode || 'summon';
+  const btnW      = W / 3;
+  const MODES_CFG = [
+    { id: 'summon', label: '♪  SUMMON', activeColor: '#44ff88', activeBg: 'rgba(68,255,136,0.18)' },
+    { id: 'attack', label: '⚔  ATTACK', activeColor: '#ff6666', activeBg: 'rgba(255,80,80,0.18)'  },
+    { id: 'charge', label: '⚡  CHARGE', activeColor: '#4488ff', activeBg: 'rgba(68,136,255,0.18)' },
+  ];
 
-  // SUMMON button — left half
-  ctx.fillStyle = isSummon ? 'rgba(68,255,136,0.18)' : 'rgba(20,20,30,0.92)';
-  ctx.fillRect(0, modeBtnY, W / 2, MODE_BTN_H);
-  ctx.strokeStyle = isSummon ? '#44ff88' : '#2a2a3a';
-  ctx.lineWidth   = isSummon ? 2 : 1;
-  ctx.strokeRect(0, modeBtnY, W / 2, MODE_BTN_H);
-  ctx.font         = 'bold 16px Georgia, serif';
-  ctx.fillStyle    = isSummon ? '#44ff88' : '#505060';
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('♪  SUMMON', W / 4, modeBtnY + MODE_BTN_H / 2);
+  for (let mi = 0; mi < MODES_CFG.length; mi++) {
+    const m      = MODES_CFG[mi];
+    const active = curMode === m.id;
+    const bx     = mi * btnW;
 
-  // ATTACK button — right half
-  ctx.fillStyle = !isSummon ? 'rgba(255,80,80,0.18)' : 'rgba(20,20,30,0.92)';
-  ctx.fillRect(W / 2, modeBtnY, W / 2, MODE_BTN_H);
-  ctx.strokeStyle = !isSummon ? '#ff6666' : '#2a2a3a';
-  ctx.lineWidth   = !isSummon ? 2 : 1;
-  ctx.strokeRect(W / 2, modeBtnY, W / 2, MODE_BTN_H);
-  ctx.fillStyle    = !isSummon ? '#ff6666' : '#505060';
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('⚔  ATTACK', W * 3 / 4, modeBtnY + MODE_BTN_H / 2);
+    ctx.fillStyle   = active ? m.activeBg : 'rgba(20,20,30,0.92)';
+    ctx.fillRect(bx, modeBtnY, btnW, MODE_BTN_H);
+    ctx.strokeStyle = active ? m.activeColor : '#2a2a3a';
+    ctx.lineWidth   = active ? 2 : 1;
+    ctx.strokeRect(bx, modeBtnY, btnW, MODE_BTN_H);
 
-  // Divider between buttons
+    ctx.font         = 'bold 16px Georgia, serif';
+    ctx.fillStyle    = active ? m.activeColor : '#505060';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(m.label, bx + btnW / 2, modeBtnY + MODE_BTN_H / 2);
+  }
+
+  // Dividers between buttons
   ctx.strokeStyle = '#2a2a3a';
   ctx.lineWidth   = 1;
-  ctx.beginPath();
-  ctx.moveTo(W / 2, modeBtnY);
-  ctx.lineTo(W / 2, modeBtnY + MODE_BTN_H);
-  ctx.stroke();
+  for (let di = 1; di < MODES_CFG.length; di++) {
+    ctx.beginPath();
+    ctx.moveTo(di * btnW, modeBtnY);
+    ctx.lineTo(di * btnW, modeBtnY + MODE_BTN_H);
+    ctx.stroke();
+  }
 
   // ── Piano keyboard ───────────────────────────────────────────────────────
   const { PIANO_X, wkW, bkW, bkH, pianoY } = pianoGeom(W, H);
@@ -272,21 +277,25 @@ export function renderHUD(ctx, state, W, H) {
 /**
  * Return which mode button was tapped, or null if the point is outside.
  * Mode buttons span the full screen width above the piano:
- *   Left half  → 'summon'
- *   Right half → 'attack'
+ *   Left third   → 'summon'
+ *   Middle third → 'attack'
+ *   Right third  → 'charge'
  *
  * @param {number} px  — x in logical (CSS) pixels
  * @param {number} py  — y in logical (CSS) pixels
  * @param {number} W   — logical canvas width
  * @param {number} H   — logical canvas height
- * @returns {'summon'|'attack'|null}
+ * @returns {'summon'|'attack'|'charge'|null}
  */
 export function getModeButtonAtPoint(px, py, W, H) {
   const modeBtnTop = H - PIANO_H - MODE_BTN_H;
   const modeBtnBot = H - PIANO_H;
   if (py < modeBtnTop || py >= modeBtnBot) return null;
   if (px < 0 || px > W) return null;
-  return px < W / 2 ? 'summon' : 'attack';
+  const btnW = W / 3;
+  if (px < btnW)     return 'summon';
+  if (px < btnW * 2) return 'attack';
+  return 'charge';
 }
 
 /**

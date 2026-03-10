@@ -165,11 +165,14 @@ export function playSuccessKill(notes) {
 // ─── KeyboardInput ───────────────────────────────────────────────────────────
 export class KeyboardInput {
   constructor() {
-    this._state     = null;
-    this._handler   = null;
-    this._tablature = null;
-    this._attackSeq = null;
-    this._cue       = null;
+    this._state        = null;
+    this._handler      = null;
+    this._keyUpHandler = null;
+    this._tablature    = null;
+    this._attackSeq    = null;
+    this._cue          = null;
+    /** Key currently held in charge mode (raw key string, lower-cased). */
+    this._chargeKey    = null;
   }
 
   /**
@@ -181,12 +184,14 @@ export class KeyboardInput {
    */
   start(state, tablatureSystem, attackSeqSystem, cueSystem) {
     this.stop();
-    this._state     = state;
-    this._tablature = tablatureSystem;
-    this._attackSeq = attackSeqSystem;
-    this._cue       = cueSystem ?? null;
-    this._handler   = (e) => this._onKeyDown(e);
+    this._state        = state;
+    this._tablature    = tablatureSystem;
+    this._attackSeq    = attackSeqSystem;
+    this._cue          = cueSystem ?? null;
+    this._handler      = (e) => this._onKeyDown(e);
+    this._keyUpHandler = (e) => this._onKeyUp(e);
     document.addEventListener('keydown', this._handler);
+    document.addEventListener('keyup',   this._keyUpHandler);
   }
 
   /** Remove listener and clear HUD highlights. */
@@ -196,6 +201,16 @@ export class KeyboardInput {
       document.removeEventListener('keydown', this._handler);
       this._handler = null;
     }
+    if (this._keyUpHandler) {
+      document.removeEventListener('keyup', this._keyUpHandler);
+      this._keyUpHandler = null;
+    }
+    // Clear any in-progress charge
+    if (this._state) {
+      this._state.chargeNote     = null;
+      this._state.chargeProgress = 0;
+    }
+    this._chargeKey = null;
   }
 
   /**
@@ -217,12 +232,20 @@ export class KeyboardInput {
     const state = this._state;
     if (!state || state.scene !== SCENE.PLAYING) return;
     if (e.repeat) return;
-    // Space bar → toggle attack / summon mode
+    // Space bar → cycle through SUMMON → ATTACK → CHARGE → SUMMON
     if (e.key === ' ') {
       e.preventDefault();
-      const next         = state.inputMode === 'summon' ? 'attack' : 'summon';
+      const MODES   = ['summon', 'attack', 'charge'];
+      const curIdx  = MODES.indexOf(state.inputMode);
+      const next    = MODES[(curIdx + 1) % MODES.length];
       state.inputMode    = next;
       state.modeAnnounce = performance.now();
+      // Clear charge state when leaving charge mode
+      if (next !== 'charge') {
+        state.chargeNote     = null;
+        state.chargeProgress = 0;
+        this._chargeKey      = null;
+      }
       // Refresh summon prompt on entry so player gets a fresh sequence
       if (next === 'summon' && this._tablature) {
         this._tablature.refresh(state);
@@ -236,7 +259,46 @@ export class KeyboardInput {
     }
     const note = KEY_TO_NOTE[e.key.toLowerCase()];
     if (!note) return;
+
+    // Charge mode: begin hold on keydown (don't route through normal attack/tablature)
+    if (state.inputMode === 'charge') {
+      try { playTone(note); } catch (_) {}
+      state.chargeNote      = note;
+      state.chargeStartTime = performance.now();
+      state.chargeProgress  = 0;
+      this._chargeKey       = e.key.toLowerCase();
+      if (state.input) {
+        state.input.pressedKeys.add(note);
+        setTimeout(() => state.input.pressedKeys.delete(note), PRESS_CLEAR_MS);
+      }
+      if (this._cue) this._cue.onNote(note, state);
+      return;
+    }
+
     this._handleNote(note, state);
+  }
+
+  /**
+   * Release handler — fires a charged attack if a note was held long enough.
+   * Only active in charge mode; ignored in other modes.
+   * @param {KeyboardEvent} e
+   */
+  _onKeyUp(e) {
+    const state = this._state;
+    if (!state || state.scene !== SCENE.PLAYING) return;
+    if (state.inputMode !== 'charge') return;
+    if (!this._chargeKey || e.key.toLowerCase() !== this._chargeKey) return;
+
+    if (state.chargeNote !== null && state.chargeProgress >= 1.0) {
+      const level = Math.min(3, Math.floor(state.chargeProgress));
+      console.log(`[charge] release level=${level} note=${state.chargeNote}`);
+      if (this._attackSeq) {
+        this._attackSeq.fireChargedAttack(level, state.chargeNote, state);
+      }
+    }
+    state.chargeNote     = null;
+    state.chargeProgress = 0;
+    this._chargeKey      = null;
   }
 
   /**

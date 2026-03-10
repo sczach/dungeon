@@ -67,6 +67,12 @@ const HOLD_FRAMES = 4;
 // Confidence fade rate per frame when signal drops below gate
 const FADE_RATE = 0.04;
 
+// Pitch stability tracking — consecutive frames the same note has been detected
+let _stableNote        = null;
+let _stableNoteFrames  = 0;
+/** Frames of same-note detection before pitchStable is set. ~100 ms at 60 fps. */
+const STABLE_FRAMES = 6;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,6 +125,8 @@ export function stopCapture() {
   _gateState.count        = 0;
   _chordState.candidate   = null;
   _chordState.frames      = 0;
+  _stableNote       = null;
+  _stableNoteFrames = 0;
   _stopCapture();
 }
 
@@ -216,14 +224,26 @@ export function updateAudio(state, dt) {   // eslint-disable-line no-unused-vars
       state.audio.detectedNote  = null;
       state.audio.detectedChord = null;
     }
-    _chordState.candidate = null;
-    _chordState.frames    = 0;
+    _chordState.candidate  = null;
+    _chordState.frames     = 0;
+    _stableNote            = null;
+    _stableNoteFrames      = 0;
+    state.audio.pitchStable = false;
     return;
   }
 
   // ── 3. Pitch detection (YIN) ──────────────────────────────────────────────
   const freq = detectPitch(timeDomain, _sampleRate);
   state.audio.detectedNote = freq !== null ? freqToNoteName(freq) : null;
+
+  // ── 3b. Pitch stability — consecutive frames of same note (charge mechanic) ─
+  if (state.audio.detectedNote !== null && state.audio.detectedNote === _stableNote) {
+    _stableNoteFrames++;
+  } else {
+    _stableNote       = state.audio.detectedNote;
+    _stableNoteFrames = state.audio.detectedNote !== null ? 1 : 0;
+  }
+  state.audio.pitchStable = (_stableNoteFrames >= STABLE_FRAMES);
 
   // ── 4. Chord matching (chromagram) ────────────────────────────────────────
   const freqData = readFrequencyDomain(_analyser);
