@@ -60,17 +60,44 @@ Keep the on-screen keyboard — it's critical for onboarding and testing.
 TITLE
   ↓ Play
 INSTRUMENT_SELECT   ← choose Piano / Guitar (soon) / Voice (soon)
-  ↓ Continue
-LEVEL_SELECT        ← back button returns to INSTRUMENT_SELECT
-  ↓ Play level
-CALIBRATION         ← guitar/voice only; piano starts immediately
-  ↓ Ready
-PLAYING
-  ↓
-VICTORY | DEFEAT
-  ↓ Level Select
-LEVEL_SELECT        ← or ENDGAME if all levels are 3★
+  ↓ Continue (first play: !tutorialComplete → auto-start tutorial)
+  │
+  ├─ First play (!tutorialComplete):
+  │    LEVEL_START(T1) → PLAYING → LEVEL_START(T2) → … → PLAYING(T4)
+  │                                                         ↓
+  │                                                    WORLD_MAP  ← tutorialComplete=true
+  │
+  └─ Returning player (tutorialComplete):
+       WORLD_MAP → LEVEL_START → CALIBRATION? → PLAYING
+                                                     ↓
+                                              VICTORY | DEFEAT
+                                                     ↓
+                                               WORLD_MAP   ← or ENDGAME if all 3★
 ```
+
+### Tutorial sequence (auto-play, forced linear)
+| Level | ID           | Mechanic introduced | Win condition  | Enemy units |
+|-------|--------------|---------------------|----------------|-------------|
+| T1    | tutorial-1   | ATTACK mode         | destroy base   | none        |
+| T2    | tutorial-2   | Survive waves       | survival       | 3 waves     |
+| T3    | tutorial-3   | SUMMON mode         | destroy base   | normal      |
+| T4    | tutorial-4   | Charge attack       | destroy base   | heavy       |
+
+- `level.allowedModes: string[]|null` — null = unrestricted; `['attack']` locks to ATTACK only.
+  Space-key cycling and mode buttons both respect this.
+- `level.chargeUnlocksBase: boolean` — T4: enemy base starts invulnerable; first `fireChargedAttack()` call makes it vulnerable.
+- `level.winCondition: 'base'|'survival'` — survival = all waves reached + no live enemies.
+- `progression.tutorialComplete: boolean` — persisted; controls first-play vs world-map routing.
+- Tutorial IDs (`tutorial-1` through `tutorial-4`) are stored in `progression.bestStars` just like regular levels.
+
+### World map
+- Canvas-rendered spider web; **no HTML DOM content** for the map itself.
+- Node data in `src/data/worldMap.js` (`WORLD_MAP_NODES`, `WORLD_MAP_NODES_BY_ID`, `TUTORIAL_SEQUENCE`).
+- Renderer: `src/ui/worldMapRenderer.js` (`WorldMapRenderer.draw(ctx, state, W, H, prog)`).
+- Camera pan via drag; `state.worldMap.{cameraX, cameraY, isDragging, ...}`.
+- `getNodeAtPoint(wx, wy, W, H, nodes)` and `getPlayButtonBounds(W, H)` exported for game.js hit-testing.
+- Node unlock: `isNodeUnlocked(node, progression)` — checks `bestStars[id] >= 1` for each `unlockRequires` entry.
+- Stub nodes (`node.stub === true`) are display-only locked placeholders (not yet implemented levels).
 
 ---
 
@@ -140,7 +167,9 @@ Mic → AnalyserNode → buildChromagram() → matchChord() → gates → detect
 ## Input modes — SETTLED
 - `summon` (default): 3-note tablature → pendingSpawn → game.js resource gate
 - `attack`: attack sequence input
+- `charge`: hold note → fill bar → release → `fireChargedAttack(level, note, state)`
 - Tablature determines unit type from first note (C/D→mage, E/F/G→knight, A/B→archer)
+- `state.allowedModes: string[]|null` restricts which modes are available (tutorial levels)
 
 ---
 
@@ -151,7 +180,7 @@ style.css                 — layout + scene visibility
 src/
   game.js                 — rAF loop, scene state machine, ALL mutable state
   renderer.js             — pure canvas draw (reads state only)
-  constants.js            — SCENE enum (incl. INSTRUMENT_SELECT, ENDGAME), layout consts
+  constants.js            — SCENE enum (WORLD_MAP, LEVEL_START added), layout consts
   audio/
     index.js              — startCapture(), updateAudio(), updateCalibration()
     chords.js             — chromagram + cosine-similarity chord matching
@@ -163,23 +192,29 @@ src/
   systems/
     base.js               — Base class (player/enemy HP)
     tablature.js          — 3-note summon bar; tracks totalHits/totalMisses for scoring
-    attackSequence.js     — attack sequence assignment + update
+    attackSequence.js     — attack sequence; fireChargedAttack() triggers chargeUnlocksBase
     waves.js              — WaveManager, WAVES table
     combat.js             — updateCombat() frame step
     prompts.js            — PromptManager (chord cue cycling, guitar mode)
     progression.js        — localStorage persistence, star award/spend, applySkills
+                            ProgressRecord: { bestStars, purchased, tutorialComplete }
     path.js               — enemy path waypoints
   input/
-    keyboard.js           — piano key input, note dispatch, playSuccessKill
+    keyboard.js           — piano key input; Space respects state.allowedModes
   ui/
-    hud.js                — HUD render + initPianoTouchInput (on-screen piano keyboard)
+    hud.js                — HUD render; mode buttons filtered by state.allowedModes
+    worldMapRenderer.js   — canvas spider-web world map (WorldMapRenderer class)
+                            exports: getNodeAtPoint(), getPlayButtonBounds()
     instrumentselect.js   — InstrumentSelectUI (Piano/Guitar/Voice cards)
-    levelselect.js        — LevelSelectUI + skill tree panel
+    levelselect.js        — LevelSelectUI + skill tree panel (legacy; still accessible)
     settings.js           — SettingsUI (audio, difficulty, display settings)
     screens.js            — per-scene screen rendering
   data/
     chords.js             — CHORD_DATA, CHORD_FALLBACK
-    levels.js             — LEVELS, computeStars() (accuracy-based), isLevelUnlocked()
+    levels.js             — LEVELS (Campfire/Crossing/Siege), computeStars(), isLevelUnlocked()
+    worldMap.js           — WORLD_MAP_NODES, TUTORIAL_SEQUENCE, isNodeUnlocked()
+                            WorldMapNode: { id, x, y, connections, unlockRequires, allowedModes,
+                              winCondition, chargeUnlocksBase, tutorialOverlay, isTutorial, stub, … }
     lessons.js            — LESSONS: level-as-lesson content (concept, notes, success metrics)
     skills.js             — SKILLS: Foundation/Technique/Mastery tiers (musical progression)
 ```
@@ -195,4 +230,4 @@ src/
 - `REF_AUDIO.md`, `REF_BACKEND.md`, `REF_GAMECORE.md` — Reference docs
 
 ## Current phase
-**Phase 1E — Melody engine, level-as-lesson, musical progression skill tree**
+**Phase 1F — Tutorial sequence, world map, level-start screen**
