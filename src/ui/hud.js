@@ -151,12 +151,15 @@ export function renderHUD(ctx, state, W, H) {
   // ── SUMMON / ATTACK / CHARGE mode toggle buttons (above piano, mobile-friendly) ──
   const modeBtnY  = H - PIANO_H - MODE_BTN_H;
   const curMode   = state.inputMode || 'summon';
-  const btnW      = W / 3;
-  const MODES_CFG = [
+  const ALL_MODES = [
     { id: 'summon', label: '♪  SUMMON', activeColor: '#44ff88', activeBg: 'rgba(68,255,136,0.18)' },
     { id: 'attack', label: '⚔  ATTACK', activeColor: '#ff6666', activeBg: 'rgba(255,80,80,0.18)'  },
     { id: 'charge', label: '⚡  CHARGE', activeColor: '#4488ff', activeBg: 'rgba(68,136,255,0.18)' },
   ];
+  // Filter to only the modes allowed by the current level (null = all three)
+  const allowed   = state.allowedModes ?? null;
+  const MODES_CFG = allowed ? ALL_MODES.filter(m => allowed.includes(m.id)) : ALL_MODES;
+  const btnW      = MODES_CFG.length > 0 ? W / MODES_CFG.length : W / 3;
 
   for (let mi = 0; mi < MODES_CFG.length; mi++) {
     const m      = MODES_CFG[mi];

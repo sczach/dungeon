@@ -15,6 +15,7 @@ import {
   BASE_WIDTH, PLAYER_BASE_X, ENEMY_BASE_X,
 } from './constants.js';
 import { renderHUD } from './ui/hud.js';
+import { WorldMapRenderer } from './ui/worldMapRenderer.js';
 
 // ─────────────────────────────────────────────
 // Palette
@@ -63,15 +64,17 @@ function waveDescription(wave) {
 export class Renderer {
   /** @param {HTMLCanvasElement} canvas  @param {CanvasRenderingContext2D} ctx */
   constructor(canvas, ctx) {
-    this.canvas      = canvas;
-    this.ctx         = ctx;
-    this._titlePhase = 0;
+    this.canvas           = canvas;
+    this.ctx              = ctx;
+    this._titlePhase      = 0;
     // Base damage flash: stores performance.now() when HP last dropped
     this._basePrevHp        = { player: -1 };
     this._baseDmgFlash      = { player: 0  };
     // Per-enemy-base flash tracking (indexed by position in state.enemyBases)
     this._enemyBasePrevHp   = [];
     this._enemyBaseDmgFlash = [];
+    // World map renderer (lazy-created)
+    this._worldMapRenderer  = null;
   }
 
   // ─────────────────────────────────────────
@@ -87,6 +90,8 @@ export class Renderer {
       case SCENE.TITLE:             this._drawTitle(state, W, H);       break;
       case SCENE.INSTRUMENT_SELECT: this._drawInstrumentSelect(W, H);   break;
       case SCENE.LEVEL_SELECT:      this._drawLevelSelect(W, H);        break;
+      case SCENE.WORLD_MAP:         this._drawWorldMap(state, W, H);    break;
+      case SCENE.LEVEL_START:       this._drawLevelStart(state, W, H);  break;
       case SCENE.CALIBRATION:       this._drawCalibration(state, W, H); break;
       case SCENE.PLAYING:           this._drawPlaying(state, W, H);     break;
       case SCENE.VICTORY:           this._drawVictory(state, W, H);     break;
@@ -223,9 +228,35 @@ export class Renderer {
     this._drawPhaseLabel(state, W, H);
     this._drawCueCard(state, W, H);
     this._drawModeAnnouncement(state, W, H);
+    this._drawTutorialOverlay(state, W, H);
     renderHUD(this.ctx, state, W, H);
 
     if (shaking) this.ctx.restore();
+  }
+
+  /** Persistent tutorial hint banner drawn at the top of the PLAYING screen. */
+  _drawTutorialOverlay(state, W, H) {
+    const hint = state.currentLevel?.tutorialOverlay;
+    if (!hint) return;
+    const ctx  = this.ctx;
+    const bw   = Math.min(460, W * 0.86);
+    const bh   = 34;
+    const bx   = (W - bw) / 2;
+    const by   = 10;
+    ctx.save();
+    ctx.fillStyle   = 'rgba(10,10,20,0.78)';
+    ctx.strokeStyle = 'rgba(232,160,48,0.40)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font         = '12px Georgia, serif';
+    ctx.fillStyle    = '#c8b090';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(hint, W / 2, by + bh / 2, bw - 18);
+    ctx.restore();
   }
 
   // ─────────────────────────────────────────
@@ -1428,6 +1459,58 @@ export class Renderer {
     this.ctx.fillStyle = glow;
     this.ctx.fillRect(0, 0, W, H);
     this._drawStars(W, H, t);
+  }
+
+  // ─────────────────────────────────────────
+  // Scene: WORLD_MAP
+  // ─────────────────────────────────────────
+
+  _drawWorldMap(state, W, H) {
+    if (!this._worldMapRenderer) {
+      this._worldMapRenderer = new WorldMapRenderer();
+    }
+    const prog = state._progression ?? { bestStars: {}, purchased: [], tutorialComplete: false };
+    this._worldMapRenderer.draw(this.ctx, state, W, H, prog);
+  }
+
+  // ─────────────────────────────────────────
+  // Scene: LEVEL_START
+  // ─────────────────────────────────────────
+
+  _drawLevelStart(state, W, H) {
+    this._titlePhase += 0.006;
+    const t  = this._titlePhase;
+    const gx = W / 2, gy = H * 0.38;
+    const glow = this.ctx.createRadialGradient(gx, gy, 0, gx, gy, W * 0.55);
+    glow.addColorStop(0,   `rgba(232,160,48,${0.08 + 0.04 * Math.sin(t)})`);
+    glow.addColorStop(0.5, `rgba(91,143,255,${0.04 + 0.02 * Math.sin(t * 1.3)})`);
+    glow.addColorStop(1,   'rgba(10,10,15,0)');
+    this.ctx.fillStyle = glow;
+    this.ctx.fillRect(0, 0, W, H);
+    this._drawStars(W, H, t);
+
+    // Tutorial overlay hint (persistent text during PLAYING is in _drawPlaying;
+    // here we draw a "coming up" preview for the selected level)
+    const lvl = state.pendingLevel;
+    if (lvl?.isTutorial && lvl.tutorialOverlay) {
+      const ctx  = this.ctx;
+      const bw   = Math.min(440, W * 0.85);
+      const bh   = 36;
+      const bx   = (W - bw) / 2;
+      const by   = H * 0.82;
+      ctx.fillStyle   = 'rgba(10,10,20,0.72)';
+      ctx.strokeStyle = 'rgba(232,160,48,0.35)';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 6);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font         = '13px Georgia, serif';
+      ctx.fillStyle    = '#c8b090';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(lvl.tutorialOverlay, W / 2, by + bh / 2, bw - 20);
+    }
   }
 
   _drawVictory(state, W, H) { this._drawEndScreen(W, H, CLR.ACCENT2, 0.18); }

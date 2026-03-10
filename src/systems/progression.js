@@ -24,8 +24,9 @@ const STORAGE_KEY = 'chordwars-progress';
 
 /**
  * @typedef {Object} ProgressRecord
- * @property {Object.<string, number>} bestStars  — levelId → best star count (0–3)
- * @property {string[]}                purchased  — ordered list of purchased skill ids
+ * @property {Object.<string, number>} bestStars       — levelId → best star count (0–3)
+ * @property {string[]}                purchased        — ordered list of purchased skill ids
+ * @property {boolean}                 tutorialComplete — true after tutorial-4 victory
  */
 
 /**
@@ -44,8 +45,9 @@ export function loadProgress() {
       return _defaultProgress();
     }
     return {
-      bestStars: Object.assign(_emptyBestStars(), parsed.bestStars),
-      purchased: parsed.purchased.filter(id => id in SKILLS_BY_ID),
+      bestStars:        Object.assign(_emptyBestStars(), parsed.bestStars),
+      purchased:        parsed.purchased.filter(id => id in SKILLS_BY_ID),
+      tutorialComplete: parsed.tutorialComplete === true,
     };
   } catch (_) {
     return _defaultProgress();
@@ -263,5 +265,5 @@ function _emptyBestStars() {
 }
 
 function _defaultProgress() {
-  return { bestStars: _emptyBestStars(), purchased: [] };
+  return { bestStars: _emptyBestStars(), purchased: [], tutorialComplete: false };
 }

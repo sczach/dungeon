@@ -22,15 +22,17 @@
  * style.css uses [data-scene] attribute selectors to show/hide HTML overlays.
  *
  * Scene flow:
- *   TITLE → INSTRUMENT_SELECT → LEVEL_SELECT → CALIBRATION → PLAYING
- *        → VICTORY | DEFEAT → LEVEL_SELECT (or ENDGAME if all levels 3★)
+ *   TITLE → INSTRUMENT_SELECT
+ *     ├─ (first play) → LEVEL_START(T1) → [CALIBRATION →] PLAYING → … → PLAYING(T4) → WORLD_MAP
+ *     └─ (returning)  → WORLD_MAP → LEVEL_START → [CALIBRATION →] PLAYING → VICTORY|DEFEAT → WORLD_MAP
  *
- * @type {Readonly<{TITLE:string, INSTRUMENT_SELECT:string, LEVEL_SELECT:string, CALIBRATION:string, PLAYING:string, VICTORY:string, DEFEAT:string, ENDGAME:string}>}
+ * @type {Readonly<{TITLE:string, INSTRUMENT_SELECT:string, WORLD_MAP:string, LEVEL_START:string, CALIBRATION:string, PLAYING:string, VICTORY:string, DEFEAT:string, ENDGAME:string}>}
  */
 export const SCENE = Object.freeze({
   TITLE:             'TITLE',
   INSTRUMENT_SELECT: 'INSTRUMENT_SELECT',
-  LEVEL_SELECT:      'LEVEL_SELECT',
+  WORLD_MAP:         'WORLD_MAP',
+  LEVEL_START:       'LEVEL_START',
   CALIBRATION:       'CALIBRATION',
   PLAYING:           'PLAYING',
   VICTORY:           'VICTORY',

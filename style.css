@@ -75,6 +75,8 @@ html, body {
 body[data-scene="TITLE"]             #screen-title,
 body[data-scene="INSTRUMENT_SELECT"] #screen-instrument-select,
 body[data-scene="LEVEL_SELECT"]      #screen-level-select,
+body[data-scene="WORLD_MAP"]         #screen-world-map,
+body[data-scene="LEVEL_START"]       #screen-level-start,
 body[data-scene="CALIBRATION"]       #screen-calibration,
 body[data-scene="PLAYING"]           #screen-hud,
 body[data-scene="VICTORY"]           #screen-victory,
@@ -82,6 +84,12 @@ body[data-scene="DEFEAT"]            #screen-defeat,
 body[data-scene="ENDGAME"]           #screen-endgame {
   display: flex;
   pointer-events: auto;   /* restore interaction for active screen */
+}
+
+/* WORLD_MAP is canvas-only — no DOM content, just forward pointer events */
+.screen--canvas-only {
+  pointer-events: none !important;
+  background: transparent;
 }
 
 /* ── Typography ── */
@@ -588,4 +596,61 @@ body[data-scene="PLAYING"] #screen-hud {
   color: var(--clr-muted);
   letter-spacing: 0.05em;
   font-style: italic;
+}
+
+/* ── Level Start screen ── */
+.level-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1.5rem;
+  max-width: 480px;
+  width: 100%;
+}
+
+.level-start__icon {
+  font-size: 64px;
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.level-start__name {
+  font-size: clamp(1.4rem, 5vw, 2rem);
+  font-weight: 900;
+  color: var(--clr-accent);
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.level-start__goal {
+  font-size: var(--fs-sm);
+  color: #c8b090;
+  max-width: 38ch;
+  line-height: 1.55;
+  text-align: center;
+  margin: 0;
+}
+
+.level-start__badge {
+  background: rgba(232,160,48,0.12);
+  border: 1px solid rgba(232,160,48,0.55);
+  color: var(--clr-accent);
+  padding: 4px 16px;
+  border-radius: 20px;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.level-start__dur {
+  font-size: var(--fs-xs);
+  color: var(--clr-muted);
+  margin: 0;
+}
+
+.btn--lg {
+  font-size: var(--fs-base);
+  padding: 0.8em 2.5em;
+  min-width: 16rem;
 }

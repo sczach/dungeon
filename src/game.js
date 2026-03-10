@@ -37,6 +37,8 @@ import { CueSystem }             from './systems/cueSystem.js';
 import { PromptManager }         from './systems/prompts.js';
 import { loadProgress, saveProgress, awardStars, applySkills } from './systems/progression.js';
 import { LEVELS, LEVELS_BY_ID, computeStars } from './data/levels.js';
+import { WORLD_MAP_NODES, WORLD_MAP_NODES_BY_ID, TUTORIAL_SEQUENCE, isNodeUnlocked } from './data/worldMap.js';
+import { getNodeAtPoint, getPlayButtonBounds } from './ui/worldMapRenderer.js';
 import { generateMelody, playMelody, stopMelody } from './audio/melodyEngine.js';
 import { applyLesson }                             from './data/lessons.js';
 
@@ -182,6 +184,24 @@ function createInitialState() {
 
     // ── Victory melody ─────────────────────────────────────────────────────
     victoryMelody:  null,    // MelodyResult | null — generated at VICTORY, played on screen
+
+    // ── World map (camera + selection) ───────────────────────────────────────
+    worldMap: {
+      selectedNodeId:      null,  // id of currently highlighted node
+      cameraX:             0,     // pan offset in logical pixels
+      cameraY:             0,
+      isDragging:          false,
+      dragAnchorX:         0,     // pointer position when drag started
+      dragAnchorY:         0,
+      dragCamStartX:       0,     // cameraX value when drag started
+      dragCamStartY:       0,
+      showTutorialComplete: false, // banner shown after T4 victory
+    },
+
+    // ── Tutorial / level-start ────────────────────────────────────────────────
+    pendingLevel:      null,   // WorldMapNode to start after LEVEL_START screen
+    allowedModes:      null,   // null = all modes; string[] = tutorial lock
+    chargeUnlocksBase: false,  // T4: enemy base invulnerable until first charge
 
     // ── Skill buff fields (reset + applied by applySkills()) ─────────────────
     skillSummonCooldownBonus:  0,
@@ -345,6 +365,46 @@ function drawMelodyPianoRoll(melody) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Victory helper — awards stars and routes to the correct next scene
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _handleVictory() {
+  const tab        = state.tablature;
+  const totalNotes = (tab.totalHits || 0) + (tab.totalMisses || 0);
+  state.noteAccuracy = totalNotes > 0
+    ? Math.round((tab.totalHits || 0) / totalNotes * 100)
+    : 100;
+
+  const level = state.currentLevel;
+  if (level) {
+    state.starsEarned = computeStars(state.noteAccuracy, level);
+    progression = awardStars(level.id, state.starsEarned, progression);
+    saveProgress(progression);
+    state._progression = progression;
+    console.log(`[victory] ${state.starsEarned}★ acc=${state.noteAccuracy}% level=${level.id}`);
+  }
+
+  // Tutorial auto-advance: T1→T2→T3→T4 skip VICTORY screen
+  const tutIdx = level ? TUTORIAL_SEQUENCE.indexOf(level.id) : -1;
+  if (tutIdx >= 0 && tutIdx < TUTORIAL_SEQUENCE.length - 1) {
+    // T1, T2, T3 — advance to the next tutorial's LEVEL_START
+    const nextId           = TUTORIAL_SEQUENCE[tutIdx + 1];
+    state.pendingLevel     = WORLD_MAP_NODES_BY_ID[nextId];
+    setScene(SCENE.LEVEL_START);
+  } else if (level?.id === 'tutorial-4') {
+    // T4 complete — tutorial series done, open world map
+    progression.tutorialComplete         = true;
+    saveProgress(progression);
+    state._progression                   = progression;
+    state.worldMap.showTutorialComplete  = true;
+    setScene(SCENE.WORLD_MAP);
+  } else {
+    // Regular level — show full VICTORY screen with melody
+    setScene(SCENE.VICTORY);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Scene management
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -369,6 +429,41 @@ function setScene(scene) {
   // Refresh level select display with latest progression on each visit
   if (scene === SCENE.LEVEL_SELECT) {
     levelSelectUI.refresh(progression);
+  }
+
+  // World map: centre camera on first visit (cameraX==0 means uninitialised)
+  if (scene === SCENE.WORLD_MAP) {
+    const W = state.canvas.width, H = state.canvas.height;
+    if (state.worldMap.cameraX === 0 && state.worldMap.cameraY === 0) {
+      state.worldMap.cameraX = Math.round(W / 2 - 425);
+      state.worldMap.cameraY = Math.round(H * 0.45 - 355);
+    }
+    state._progression = progression;
+  }
+
+  // Populate level-start overlay from pending level node
+  if (scene === SCENE.LEVEL_START) {
+    const lvl = state.pendingLevel;
+    if (lvl) {
+      const el = (id) => document.getElementById(id);
+      const iconEl  = el('lst-icon');
+      const nameEl  = el('lst-name');
+      const goalEl  = el('lst-goal');
+      const badgeEl = el('lst-badge');
+      const durEl   = el('lst-duration');
+      if (iconEl)  iconEl.textContent  = lvl.icon  ?? '⚔️';
+      if (nameEl)  nameEl.textContent  = lvl.name  ?? '';
+      if (goalEl)  goalEl.textContent  = lvl.levelGoal ?? '';
+      if (badgeEl) {
+        if (lvl.mechanicBadge) {
+          badgeEl.textContent = lvl.mechanicBadge;
+          badgeEl.hidden      = false;
+        } else {
+          badgeEl.hidden = true;
+        }
+      }
+      if (durEl) durEl.textContent = lvl.estimatedDuration ?? '';
+    }
   }
 
   // Populate victory / defeat overlays
@@ -512,17 +607,34 @@ function wireButtons() {
   $('btn-play-again-victory')?.addEventListener('click', () => startGame(state.currentLevel));
   $('btn-play-again-defeat')?.addEventListener('click',  () => startGame(state.currentLevel));
 
-  // VICTORY → LEVEL_SELECT (or ENDGAME if all levels 3★)
+  // VICTORY → WORLD_MAP (or ENDGAME if all levels 3★)
   $('btn-title-victory')?.addEventListener('click', () => {
     const allThreeStars = LEVELS.every(l => (progression.bestStars[l.id] ?? 0) >= 3);
-    setScene(allThreeStars ? SCENE.ENDGAME : SCENE.LEVEL_SELECT);
+    setScene(allThreeStars ? SCENE.ENDGAME : SCENE.WORLD_MAP);
   });
 
-  // DEFEAT → LEVEL_SELECT
-  $('btn-title-defeat')?.addEventListener('click', () => setScene(SCENE.LEVEL_SELECT));
+  // DEFEAT → WORLD_MAP
+  $('btn-title-defeat')?.addEventListener('click', () => setScene(SCENE.WORLD_MAP));
 
-  // ENDGAME → LEVEL_SELECT
-  $('btn-endgame-ls')?.addEventListener('click', () => setScene(SCENE.LEVEL_SELECT));
+  // ENDGAME → WORLD_MAP
+  $('btn-endgame-ls')?.addEventListener('click', () => setScene(SCENE.WORLD_MAP));
+
+  // LEVEL_START: PLAY button — start the pending level
+  $('btn-lst-play')?.addEventListener('click', () => {
+    const lvl = state.pendingLevel;
+    if (!lvl || lvl.stub) return;
+    state.currentLevel = lvl;
+    if (state.instrument === 'guitar' || state.instrument === 'voice') {
+      setScene(SCENE.CALIBRATION);
+      startCapture(state).catch(() => {});
+    } else {
+      startCapture(state).catch(() => {});
+      startGame(lvl);
+    }
+  });
+
+  // LEVEL_START: ← Map button
+  $('btn-lst-back')?.addEventListener('click', () => setScene(SCENE.WORLD_MAP));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -561,15 +673,22 @@ function startGame(levelConfig) {
     showChordCues:   state.showChordCues,
     cueDisplayStyle: state.cueDisplayStyle,
     instrument:      state.instrument || 'piano',
-    inputMode:       'summon',   // always reset to summon on new game
+    inputMode:       level.allowedModes?.[0] ?? 'summon',
     currentLevel:    level,
     starsEarned:     0,
   });
 
   // Preserve canvas dimensions — managed by onResize(), not game logic.
-  const savedCanvas = state.canvas;
+  const savedCanvas   = state.canvas;
+  const savedWorldMap = state.worldMap;
   Object.assign(state, fresh);
-  state.canvas = savedCanvas;
+  state.canvas   = savedCanvas;
+  state.worldMap = savedWorldMap;
+
+  // Apply tutorial / level-start mechanic flags
+  state.allowedModes      = level.allowedModes      ?? null;
+  state.chargeUnlocksBase = level.chargeUnlocksBase  ?? false;
+  state._progression      = progression;   // read-only ref for renderer
 
   // Build bases at correct canvas-relative positions
   const W     = state.canvas.width;
@@ -624,6 +743,22 @@ function startGame(levelConfig) {
     state.phaseAnnounce = performance.now();
   }
 
+  // Override enemy base HP for tutorial T1 (quick beatable fight ~30 s)
+  if (level._enemyBaseHp != null) {
+    for (let i = 0; i < state.enemyBases.length; i++) {
+      state.enemyBases[i].hp    = level._enemyBaseHp;
+      state.enemyBases[i].maxHp = level._enemyBaseHp;
+    }
+  }
+
+  // Survival levels (T2): enemy bases permanently invulnerable
+  // chargeUnlocksBase (T4): enemy base invulnerable until first charge fires
+  if (level.winCondition === 'survival' || state.chargeUnlocksBase) {
+    for (let i = 0; i < state.enemyBases.length; i++) {
+      state.enemyBases[i].vulnerable = false;
+    }
+  }
+
   keyboardInput.start(state, tablatureSystem, attackSequenceSystem, cueSystem);
   setScene(SCENE.PLAYING);
 }
@@ -665,6 +800,12 @@ function rollEnemyTier(wave, elapsedSecs) {
  * Speed cap: enemy speed is halved vs player-unit base stats.
  */
 function spawnEnemyUnit() {
+  // Survival levels: stop spawning once the last wave is reached (player must clear what's there)
+  if (state.currentLevel?.winCondition === 'survival' &&
+      state.wave >= (state.currentLevel.maxWaves ?? 3)) {
+    return;
+  }
+
   // Hard cap — respect per-level enemy count ceiling
   const cap = state.currentLevel?.maxEnemyCap ?? 6;
   let enemyCount = 0;
@@ -921,8 +1062,12 @@ function update(dt) {
 
       // ── Wave grace period — re-enable vulnerability once grace window closes ──
       if (state.waveGraceEnd > 0 && state.time >= state.waveGraceEnd) {
-        for (let bi = 0; bi < state.enemyBases.length; bi++) {
-          if (!state.enemyBases[bi].isDestroyed()) state.enemyBases[bi].vulnerable = true;
+        state.waveGraceEnd = 0;
+        // Survival: bases always invulnerable. chargeUnlocksBase: wait for first charge.
+        if (state.currentLevel?.winCondition !== 'survival' && !state.chargeUnlocksBase) {
+          for (let bi = 0; bi < state.enemyBases.length; bi++) {
+            if (!state.enemyBases[bi].isDestroyed()) state.enemyBases[bi].vulnerable = true;
+          }
         }
       }
 
@@ -1066,23 +1211,24 @@ function update(dt) {
         break;
       }
 
-      // Victory: all enemy bases destroyed (the only win condition)
+      // Survival win (T2): last wave reached + no live enemies remain
+      {
+        const lvl = state.currentLevel;
+        if (lvl?.winCondition === 'survival') {
+          const maxW      = lvl.maxWaves ?? 3;
+          const noEnemies = !state.units.some(u => u.team === 'enemy' && u.alive);
+          if (state.wave >= maxW && noEnemies) {
+            _handleVictory();
+            break;
+          }
+        }
+      }
+
+      // Victory: all enemy bases destroyed
       {
         const wonByBase = state.enemyBases.length > 0 && state.enemyBases.every(b => b.isDestroyed());
         if (wonByBase) {
-          const tab        = state.tablature;
-          const totalNotes = (tab.totalHits || 0) + (tab.totalMisses || 0);
-          state.noteAccuracy = totalNotes > 0
-            ? Math.round((tab.totalHits || 0) / totalNotes * 100)
-            : 100;
-
-          if (state.currentLevel) {
-            state.starsEarned = computeStars(state.noteAccuracy, state.currentLevel);
-            progression = awardStars(state.currentLevel.id, state.starsEarned, progression);
-            saveProgress(progression);
-            console.log(`[victory] ${state.starsEarned}★ acc=${state.noteAccuracy}% via base destroyed`);
-          }
-          setScene(SCENE.VICTORY);
+          _handleVictory();
           break;
         }
       }
@@ -1111,13 +1257,19 @@ setScene(SCENE.TITLE);
 wireButtons();
 settingsUI.render(state);
 
-// InstrumentSelectUI: render once; callback saves choice + advances to LEVEL_SELECT.
+// InstrumentSelectUI: render once; callback saves choice + advances to LEVEL_START or WORLD_MAP.
 instrumentSelectUI.render(
   state.instrument || 'piano',
   (instrumentId) => {
     state.instrument = instrumentId;
     settingsUI.saveSettings(state);
-    setScene(SCENE.LEVEL_SELECT);
+    if (!progression.tutorialComplete) {
+      // First play: auto-start the tutorial sequence
+      state.pendingLevel = WORLD_MAP_NODES_BY_ID['tutorial-1'];
+      setScene(SCENE.LEVEL_START);
+    } else {
+      setScene(SCENE.WORLD_MAP);
+    }
   }
 );
 
@@ -1145,6 +1297,8 @@ levelSelectUI.render(
 initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) => {
   if (state.scene !== SCENE.PLAYING) return;
   if (state.inputMode === mode) return;
+  // Respect tutorial mode restrictions
+  if (state.allowedModes && !state.allowedModes.includes(mode)) return;
   state.inputMode    = mode;
   state.modeAnnounce = performance.now();
   if (mode === 'summon') tablatureSystem.refresh(state);
@@ -1154,6 +1308,103 @@ initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) =
   }
   console.log(`[mode] tapped → ${mode}`);
 });
+
+// ── World map canvas input (drag to pan + tap to select nodes) ───────────────
+{
+  function _toLogical(clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    return { x: clientX - r.left, y: clientY - r.top };
+  }
+
+  function _onWorldMapPointerDown(x, y) {
+    if (state.scene !== SCENE.WORLD_MAP) return;
+    state.worldMap.isDragging    = true;
+    state.worldMap.dragAnchorX   = x;
+    state.worldMap.dragAnchorY   = y;
+    state.worldMap.dragCamStartX = state.worldMap.cameraX;
+    state.worldMap.dragCamStartY = state.worldMap.cameraY;
+  }
+
+  function _onWorldMapPointerMove(x, y) {
+    if (state.scene !== SCENE.WORLD_MAP || !state.worldMap.isDragging) return;
+    state.worldMap.cameraX = state.worldMap.dragCamStartX + (x - state.worldMap.dragAnchorX);
+    state.worldMap.cameraY = state.worldMap.dragCamStartY + (y - state.worldMap.dragAnchorY);
+  }
+
+  function _onWorldMapPointerUp(x, y) {
+    if (state.scene !== SCENE.WORLD_MAP) return;
+    const wasDragging = state.worldMap.isDragging;
+    state.worldMap.isDragging = false;
+    // Treat as click only if pointer barely moved (< 6 px)
+    const dx = x - state.worldMap.dragAnchorX;
+    const dy = y - state.worldMap.dragAnchorY;
+    if (wasDragging && (dx * dx + dy * dy) > 36) return;
+    _handleWorldMapClick(x, y);
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    const { x, y } = _toLogical(e.clientX, e.clientY);
+    _onWorldMapPointerDown(x, y);
+  });
+  canvas.addEventListener('mousemove', e => {
+    const { x, y } = _toLogical(e.clientX, e.clientY);
+    _onWorldMapPointerMove(x, y);
+  });
+  canvas.addEventListener('mouseup', e => {
+    const { x, y } = _toLogical(e.clientX, e.clientY);
+    _onWorldMapPointerUp(x, y);
+  });
+  canvas.addEventListener('mouseleave', () => {
+    if (state.scene === SCENE.WORLD_MAP) state.worldMap.isDragging = false;
+  });
+  canvas.addEventListener('touchstart', e => {
+    if (state.scene !== SCENE.WORLD_MAP) return;
+    const t = e.touches[0]; if (!t) return;
+    const { x, y } = _toLogical(t.clientX, t.clientY);
+    _onWorldMapPointerDown(x, y);
+  }, { passive: true });
+  canvas.addEventListener('touchmove', e => {
+    if (state.scene !== SCENE.WORLD_MAP) return;
+    e.preventDefault();
+    const t = e.touches[0]; if (!t) return;
+    const { x, y } = _toLogical(t.clientX, t.clientY);
+    _onWorldMapPointerMove(x, y);
+  }, { passive: false });
+  canvas.addEventListener('touchend', e => {
+    if (state.scene !== SCENE.WORLD_MAP) return;
+    const t = e.changedTouches[0]; if (!t) return;
+    const { x, y } = _toLogical(t.clientX, t.clientY);
+    _onWorldMapPointerUp(x, y);
+  }, { passive: true });
+}
+
+function _handleWorldMapClick(x, y) {
+  if (state.scene !== SCENE.WORLD_MAP) return;
+  const W = state.canvas.width, H = state.canvas.height;
+
+  // Check PLAY button (screen-space — not affected by camera pan)
+  const pb = getPlayButtonBounds(W, H);
+  if (state.worldMap.selectedNodeId &&
+      x >= pb.x && y >= pb.y && x <= pb.x + pb.w && y <= pb.y + pb.h) {
+    const node = WORLD_MAP_NODES_BY_ID[state.worldMap.selectedNodeId];
+    if (node && !node.stub && isNodeUnlocked(node, progression)) {
+      state.pendingLevel = node;
+      setScene(SCENE.LEVEL_START);
+    }
+    return;
+  }
+
+  // Hit-test world map nodes (subtract camera offset to get world coords)
+  const wx = x - state.worldMap.cameraX;
+  const wy = y - state.worldMap.cameraY;
+  const nodeId = getNodeAtPoint(wx, wy, W, H, WORLD_MAP_NODES);
+  if (nodeId) {
+    const node = WORLD_MAP_NODES_BY_ID[nodeId];
+    if (node && !node.stub && isNodeUnlocked(node, progression)) {
+      state.worldMap.selectedNodeId = nodeId;
+    }
+  }
+}
 
 requestAnimationFrame((ts) => {
   lastTimestamp = ts;

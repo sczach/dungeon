@@ -232,12 +232,14 @@ export class KeyboardInput {
     const state = this._state;
     if (!state || state.scene !== SCENE.PLAYING) return;
     if (e.repeat) return;
-    // Space bar → cycle through SUMMON → ATTACK → CHARGE → SUMMON
+    // Space bar → cycle through allowed modes (default: SUMMON → ATTACK → CHARGE → SUMMON)
     if (e.key === ' ') {
       e.preventDefault();
-      const MODES   = ['summon', 'attack', 'charge'];
-      const curIdx  = MODES.indexOf(state.inputMode);
-      const next    = MODES[(curIdx + 1) % MODES.length];
+      // Respect tutorial mechanic locks — only cycle within allowed modes
+      const MODES  = state.allowedModes ?? ['summon', 'attack', 'charge'];
+      if (MODES.length <= 1) return;  // single-mode level — no cycling
+      const curIdx = MODES.indexOf(state.inputMode);
+      const next   = MODES[(curIdx + 1) % MODES.length];
       state.inputMode    = next;
       state.modeAnnounce = performance.now();
       // Clear charge state when leaving charge mode

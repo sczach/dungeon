@@ -51,6 +51,23 @@
       <!-- Populated at runtime by src/ui/hud.js -->
     </section>
 
+    <!-- ── WORLD MAP scene (canvas-only — no DOM content, CSS just controls pointer-events) ── -->
+    <section class="screen screen--canvas-only" id="screen-world-map" data-show-on="WORLD_MAP">
+    </section>
+
+    <!-- ── LEVEL START screen ── -->
+    <section class="screen" id="screen-level-start" data-show-on="LEVEL_START">
+      <div class="level-start">
+        <div class="level-start__icon"  id="lst-icon">⚔️</div>
+        <h2  class="level-start__name"  id="lst-name"></h2>
+        <p   class="level-start__goal"  id="lst-goal"></p>
+        <div class="level-start__badge" id="lst-badge" hidden></div>
+        <p   class="level-start__dur"   id="lst-duration"></p>
+        <button class="btn btn--primary btn--lg" id="btn-lst-play">▶ PLAY</button>
+        <button class="btn btn--ghost   btn--sm" id="btn-lst-back">← Map</button>
+      </div>
+    </section>
+
     <!-- ── LEVEL SELECT screen ── -->
     <section class="screen" id="screen-level-select" data-show-on="LEVEL_SELECT">
       <button class="btn btn--ghost btn--sm btn--back" id="btn-ls-back">← Instrument</button>
@@ -97,7 +114,7 @@
       </div>
 
       <button class="btn btn--primary" id="btn-play-again-victory">Play Again</button>
-      <button class="btn btn--ghost"   id="btn-title-victory">Level Select</button>
+      <button class="btn btn--ghost"   id="btn-title-victory">World Map</button>
     </section>
 
     <!-- ── DEFEAT screen ── -->
@@ -105,7 +122,7 @@
       <h2>Defeated…</h2>
       <p id="defeat-score"></p>
       <button class="btn btn--primary" id="btn-play-again-defeat">Try Again</button>
-      <button class="btn btn--ghost"   id="btn-title-defeat">Level Select</button>
+      <button class="btn btn--ghost"   id="btn-title-defeat">World Map</button>
     </section>
 
     <!-- ── ENDGAME screen ── -->
@@ -114,7 +131,7 @@
       <p class="tagline">You've mastered every battle. The realm is yours.</p>
       <p class="endgame-message">★ ★ ★  Perfect score across all levels  ★ ★ ★</p>
       <p class="endgame-teaser">Endless mode — coming soon</p>
-      <button class="btn btn--ghost" id="btn-endgame-ls">Level Select</button>
+      <button class="btn btn--ghost" id="btn-endgame-ls">World Map</button>
     </section>
 
   </div><!-- /#overlay -->

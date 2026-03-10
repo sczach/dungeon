@@ -348,6 +348,15 @@ export class AttackSequenceSystem {
    */
   fireChargedAttack(chargeLevel, _note, state) {
     if (!state.playerBase) return;
+
+    // T4 mechanic: first charge unlocks the enemy base (Protected shield drops)
+    if (state.chargeUnlocksBase) {
+      for (let i = 0; i < (state.enemyBases?.length ?? 0); i++) {
+        if (!state.enemyBases[i].isDestroyed()) state.enemyBases[i].vulnerable = true;
+      }
+      state.chargeUnlocksBase = false;
+    }
+
     const srcX    = state.playerBase.x;
     const srcY    = state.playerBase.y;
     const units   = state.units;
