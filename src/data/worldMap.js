@@ -47,9 +47,9 @@ const TUTORIAL_1 = Object.freeze({
   icon:              '⚡',
   maxWaves:          1,
   difficultyMod:     0.5,
-  spawnMod:          999,         // effectively disables spawning
+  spawnMod:          999,         // effectively disables spawning (base-only tutorial)
   startResources:    0,           // resources unused in T1
-  maxEnemyCap:       0,           // no enemy units — base only
+  maxEnemyCap:       0,           // no enemy units — attack the base directly
   isTutorial:        true,
   stub:              false,
   allowedModes:      ['attack'],  // ATTACK only — no summon, no charge
@@ -79,9 +79,9 @@ const TUTORIAL_2 = Object.freeze({
   icon:              '🌊',
   maxWaves:          3,
   difficultyMod:     0.6,
-  spawnMod:          1.8,
+  spawnMod:          1.0,         // interval controlled by difficulty (1.5s medium)
   startResources:    0,
-  maxEnemyCap:       4,
+  maxEnemyCap:       12,
   isTutorial:        true,
   stub:              false,
   allowedModes:      ['attack'],
@@ -112,7 +112,7 @@ const TUTORIAL_3 = Object.freeze({
   difficultyMod:     0.7,
   spawnMod:          1.4,
   startResources:    200,
-  maxEnemyCap:       5,
+  maxEnemyCap:       12,
   isTutorial:        true,
   stub:              false,
   allowedModes:      ['summon', 'attack'],
@@ -143,7 +143,7 @@ const TUTORIAL_4 = Object.freeze({
   difficultyMod:     1.2,   // heavy units
   spawnMod:          1.2,
   startResources:    200,
-  maxEnemyCap:       6,
+  maxEnemyCap:       12,
   isTutorial:        true,
   stub:              false,
   allowedModes:      ['summon', 'attack', 'charge'],

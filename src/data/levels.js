@@ -48,9 +48,9 @@ export const LEVELS = Object.freeze([
     icon:           '🔥',
     maxWaves:       7,
     difficultyMod:  0.8,    // enemy HP ×0.8 — softer introduction
-    spawnMod:       1.25,   // spawn interval ×1.25 — more breathing room
+    spawnMod:       1.25,   // retained for data compat; interval now set by difficulty
     startResources: 250,    // extra starting gold
-    maxEnemyCap:    5,
+    maxEnemyCap:    12,
     unlockRequires: null,   // always available
     starThresholds: [0, 65, 85],  // 1★: any win; 2★: ≥65% accuracy; 3★: ≥85%
     bpm:            110,          // tempo for cue system
@@ -72,7 +72,7 @@ export const LEVELS = Object.freeze([
     difficultyMod:  1.0,
     spawnMod:       1.0,
     startResources: 200,
-    maxEnemyCap:    6,
+    maxEnemyCap:    12,
     unlockRequires: 'campfire',
     starThresholds: [0, 70, 90],  // 1★: any win; 2★: ≥70% accuracy; 3★: ≥90%
     bpm:            120,
@@ -96,7 +96,7 @@ export const LEVELS = Object.freeze([
     difficultyMod:  1.35,
     spawnMod:       0.8,
     startResources: 150,
-    maxEnemyCap:    8,
+    maxEnemyCap:    12,
     unlockRequires: 'crossing',
     starThresholds: [0, 70, 90],  // same as Crossing — accuracy standard doesn't drop
     bpm:            130,          // faster tempo = harder cue timing

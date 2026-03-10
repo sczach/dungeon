@@ -158,8 +158,15 @@ function createInitialState() {
     // ── Resources — earned via kills, spent on summons ──
     resources:          200,     // start 200; no auto-tick; kills add 20/30/50
     _lastKillMelodyMs:  0,       // throttle: ≤ 1 melody per 800 ms
-    enemySpawnTimer:    8,       // seconds until next enemy spawn
-    enemySpawnInterval: 8,       // current inter-spawn delay (reduces every 60 s of play)
+    enemySpawnTimer:    0,       // seconds until next enemy spawn (0 = first enemy spawns immediately)
+    enemySpawnInterval: 1.5,     // seconds between spawns (set by difficulty at startGame)
+
+    // ── Wave density tracking ─────────────────────────────────────────────
+    waveEnemiesSpawned: 0,       // enemies spawned in current wave
+    waveEnemiesKilled:  0,       // enemies killed from current wave
+    waveSize:           8,       // total enemies for this wave
+    waveOverlapping:    false,   // true when next wave started early (50% threshold)
+    betweenWavesTimer:  0,       // countdown (seconds) between waves; 0 = actively spawning
 
     // ── Summon cooldown — top-level gate; 500 ms after any successful summon ──
     summonCooldownEnd:  0,       // performance.now() timestamp; 0 = no cooldown active
@@ -188,6 +195,7 @@ function createInitialState() {
     // ── World map (camera + selection) ───────────────────────────────────────
     worldMap: {
       selectedNodeId:      null,  // id of currently highlighted node
+      lastPlayedNodeId:    null,  // id of last completed level (teal ring on return)
       cameraX:             0,     // pan offset in logical pixels
       cameraY:             0,
       isDragging:          false,
@@ -713,13 +721,19 @@ function startGame(levelConfig) {
   const skillResourceBonus = state.resources - 200;   // delta from default
   state.resources = level.startResources + skillResourceBonus;
 
-  // Apply difficulty to initial spawn timing
-  const DIFF_INTERVALS = { easy: 12, medium: 8, hard: 5 };
-  let baseInterval = DIFF_INTERVALS[state.difficulty] ?? 8;
-  // Level spawnMod scales the interval (>1 = slower enemies = easier)
-  baseInterval = baseInterval * (level.spawnMod ?? 1.0);
-  state.enemySpawnInterval = baseInterval + (state.skillSpawnIntervalBonus || 0);
-  state.enemySpawnTimer    = state.enemySpawnInterval;
+  // Apply difficulty to spawn interval — new dense-wave system
+  // Easy=2s, Medium=1.5s, Hard=1s between individual enemy spawns
+  const DIFF_INTERVALS = { easy: 2, medium: 1.5, hard: 1 };
+  const baseInterval   = DIFF_INTERVALS[state.difficulty] ?? 1.5;
+  state.enemySpawnInterval = Math.max(0.5, baseInterval + (state.skillSpawnIntervalBonus || 0));
+  state.enemySpawnTimer    = 0;   // first enemy spawns on the very first update tick
+
+  // Initialise wave density fields
+  state.waveEnemiesSpawned = 0;
+  state.waveEnemiesKilled  = 0;
+  state.waveSize           = 8;   // minimum 8 enemies per wave
+  state.waveOverlapping    = false;
+  state.betweenWavesTimer  = 0;   // 0 = start spawning immediately (no opening gap)
 
   // Attach level-as-lesson content (sets state.currentLesson)
   applyLesson(state, level.id);
@@ -1046,42 +1060,84 @@ function update(dt) {
       }
       // No resource auto-tick — resources earned from kills only
 
-      // ── Wave progression (every 30 s of play time, capped by level) ────────
-      const maxWaves  = state.currentLevel?.maxWaves ?? 10;
-      const targetWave = Math.min(maxWaves, 1 + Math.floor(state.time / 30));
-      if (targetWave > state.wave) {
-        state.wave         = targetWave;
-        state.waveAnnounce = performance.now();
-        // 10-second grace period: bases invulnerable at start of each new wave
-        state.waveGraceEnd = state.time + 10;
-        for (let bi = 0; bi < state.enemyBases.length; bi++) {
-          if (!state.enemyBases[bi].isDestroyed()) state.enemyBases[bi].vulnerable = false;
-        }
-      }
+      // ── Wave & spawn system ───────────────────────────────────────────────
+      {
+        const maxWaves = state.currentLevel?.maxWaves ?? 10;
+        const lvl      = state.currentLevel;
 
-      // ── Wave grace period — re-enable vulnerability once grace window closes ──
-      if (state.waveGraceEnd > 0 && state.time >= state.waveGraceEnd) {
-        state.waveGraceEnd = 0;
-        // Survival: bases always invulnerable. chargeUnlocksBase: wait for first charge.
-        if (state.currentLevel?.winCondition !== 'survival' && !state.chargeUnlocksBase) {
-          for (let bi = 0; bi < state.enemyBases.length; bi++) {
-            if (!state.enemyBases[bi].isDestroyed()) state.enemyBases[bi].vulnerable = true;
+        // Count live enemies on screen
+        let aliveEnemies = 0;
+        for (let ei = 0; ei < state.units.length; ei++) {
+          if (state.units[ei].team === 'enemy' && state.units[ei].alive) aliveEnemies++;
+        }
+        const cap = Math.max(12, lvl?.maxEnemyCap ?? 12);
+
+        // ── Spawn enemies for current wave ──────────────────────────────────
+        if (state.betweenWavesTimer <= 0) {
+          // Survival: stop spawning once the final wave is fully spawned
+          const survivalDone = lvl?.winCondition === 'survival'
+            && state.wave >= maxWaves
+            && state.waveEnemiesSpawned >= state.waveSize;
+
+          if (!survivalDone && state.waveEnemiesSpawned < state.waveSize && aliveEnemies < cap) {
+            state.enemySpawnTimer -= dt;
+            if (state.enemySpawnTimer <= 0) {
+              state.enemySpawnTimer += state.enemySpawnInterval;
+              spawnEnemyUnit();
+              state.waveEnemiesSpawned++;
+            }
+          }
+        } else {
+          // Counting down between waves
+          state.betweenWavesTimer = Math.max(0, state.betweenWavesTimer - dt);
+        }
+
+        // ── Wave advance: overlap at 50% killed ────────────────────────────
+        if (!state.waveOverlapping
+            && state.waveEnemiesSpawned > 0
+            && state.waveEnemiesKilled >= Math.ceil(state.waveSize * 0.5)
+            && state.wave < maxWaves) {
+          state.wave++;
+          state.waveAnnounce      = performance.now();
+          state.waveEnemiesSpawned = 0;
+          state.waveEnemiesKilled  = 0;
+          state.waveSize           = Math.max(8, state.waveSize);
+          state.waveOverlapping    = true;
+          state.betweenWavesTimer  = 0;
+          // Brief base invulnerability on each wave advance (non-survival levels)
+          if (lvl?.winCondition !== 'survival' && !state.chargeUnlocksBase) {
+            state.waveGraceEnd = state.time + 5;
+            for (let bi = 0; bi < state.enemyBases.length; bi++) {
+              if (!state.enemyBases[bi].isDestroyed()) state.enemyBases[bi].vulnerable = false;
+            }
+          }
+          console.log(`[wave] overlap advance → wave ${state.wave}`);
+        }
+
+        // ── Wave complete: all spawned + all dead → brief gap then next wave ─
+        if (state.waveEnemiesSpawned >= state.waveSize
+            && aliveEnemies === 0
+            && state.betweenWavesTimer === 0
+            && state.wave < maxWaves) {
+          state.wave++;
+          state.waveAnnounce      = performance.now();
+          state.waveEnemiesSpawned = 0;
+          state.waveEnemiesKilled  = 0;
+          state.waveSize           = Math.max(8, state.waveSize);
+          state.waveOverlapping    = false;
+          state.betweenWavesTimer  = 4;  // max 4 s gap before next wave begins
+          console.log(`[wave] cleared → wave ${state.wave} (gap ${state.betweenWavesTimer}s)`);
+        }
+
+        // ── Grace period: bases invulnerable briefly after each wave advance ─
+        if (state.waveGraceEnd > 0 && state.time >= state.waveGraceEnd) {
+          state.waveGraceEnd = 0;
+          if (lvl?.winCondition !== 'survival' && !state.chargeUnlocksBase) {
+            for (let bi = 0; bi < state.enemyBases.length; bi++) {
+              if (!state.enemyBases[bi].isDestroyed()) state.enemyBases[bi].vulnerable = true;
+            }
           }
         }
-      }
-
-      // ── Dynamic spawn interval: −0.5 s every 60 s, floor 2 s ────────────
-      // Initial 8 s → 7.5 s at 60 s → 7 s at 120 s → … → 2 s at 720 s
-      const targetInterval = Math.max(2, 8 - Math.floor(state.time / 60) * 0.5);
-      if (targetInterval < state.enemySpawnInterval) {
-        state.enemySpawnInterval = targetInterval;
-      }
-
-      // ── Enemy spawning ────────────────────────────────────────────────────
-      state.enemySpawnTimer -= dt;
-      if (state.enemySpawnTimer <= 0) {
-        state.enemySpawnTimer = state.enemySpawnInterval;
-        spawnEnemyUnit();
       }
 
       // ── Combo decay (4 s of no input resets combo to 0) ──────────────────
@@ -1145,6 +1201,7 @@ function update(dt) {
         if (!u.alive) {
           if (u.team === 'enemy') {
             state.score += u.tier * 100;
+            state.waveEnemiesKilled++;  // track kills for 50% overlap trigger
             // Resource earn: T1=20, T2=30, T3=50
             const EARN = [0, 20, 30, 50];
             state.resources = Math.min(200, state.resources + EARN[u.tier]);
