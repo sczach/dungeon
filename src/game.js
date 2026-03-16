@@ -23,7 +23,7 @@ import {
   LANE_Y, LANE_HEIGHT,
   BASE_WIDTH, PLAYER_BASE_X, ENEMY_BASE_X,
 } from './constants.js';
-import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
+import { startCapture, updateAudio, updateCalibration, resumeAudioContext } from './audio/index.js';
 import { Unit }                  from './entities/unit.js';
 import { Base }                  from './systems/base.js';
 import { keyboardInput, playSuccessKill } from './input/keyboard.js';
@@ -649,7 +649,13 @@ function wireButtons() {
   });
 
   // CALIBRATION → PLAYING
-  $('btn-calibration-done')?.addEventListener('click', () => startGame());
+  // resumeAudioContext() is called here because this click IS a user gesture —
+  // the safest moment to lift a mobile AudioContext suspension before gameplay.
+  $('btn-calibration-done')?.addEventListener('click', () => {
+    resumeAudioContext()
+      .then(() => startGame())
+      .catch(() => startGame());   // start regardless if resume fails
+  });
 
   // VICTORY / DEFEAT → PLAYING (replay same level)
   $('btn-play-again-victory')?.addEventListener('click', () => startGame(state.currentLevel));
@@ -1445,6 +1451,13 @@ levelSelectUI.render(
     progression = updatedProg;
   }
 );
+
+// Re-resume AudioContext on every canvas touch during gameplay.
+// Mobile browsers can re-suspend it mid-session (screen lock, phone call,
+// tab switch).  This passive listener costs nothing and self-heals silently.
+canvas.addEventListener('touchstart', () => {
+  if (state.scene === SCENE.PLAYING) resumeAudioContext();
+}, { passive: true });
 
 initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) => {
   if (state.scene !== SCENE.PLAYING) return;

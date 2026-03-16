@@ -206,9 +206,34 @@ export function updateCalibration(state) {
  * @param {number} dt    — delta-time in seconds (unused here; reserved for
  *                         future time-weighted smoothing)
  */
+/**
+ * Resume a suspended AudioContext.
+ * Call from a user-gesture handler (button click / touchstart) so the
+ * browser allows the resume.  Safe to call at any time — no-ops when
+ * the context is already running or when capture hasn't started.
+ *
+ * @returns {Promise<void>}
+ */
+export function resumeAudioContext() {
+  if (_audioCtx?.state === 'suspended') {
+    return _audioCtx.resume().catch(err =>
+      console.warn('[audio] resume failed:', err)
+    );
+  }
+  return Promise.resolve();
+}
+
 export function updateAudio(state, dt) {   // eslint-disable-line no-unused-vars
   if (!_analyser || !state.audio.ready) return;
-  if (_audioCtx?.state !== 'running')   return;
+
+  // Mobile browsers suspend AudioContext between gestures.  Kick a resume
+  // attempt every frame while suspended — it will succeed as soon as the
+  // next user gesture lands (or immediately if the policy allows it).
+  if (_audioCtx?.state === 'suspended') {
+    _audioCtx.resume().catch(() => {});
+    return;   // skip this frame; next frame the state will be 'running'
+  }
+  if (_audioCtx?.state !== 'running') return;
 
   // ── 1. Time domain snapshot ───────────────────────────────────────────────
   const { timeDomain, rms } = readTimeDomain(_analyser);
