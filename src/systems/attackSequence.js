@@ -43,8 +43,10 @@ const SEQ_LENGTHS  = [0, 2, 3, 5];
 /** Stun duration in seconds (kept short so T3 doesn't monopolise attention). */
 const STUN_DURATION = 2;
 
-/** Damage dealt by a direct attack (miss bolt) before accuracy multiplier. */
-const BASE_DIRECT_DAMAGE = 8;
+/** Damage dealt by a direct attack (miss bolt) before accuracy multiplier.
+ *  Increased from 8 → 15 so keyboard direct hits do ~7.5 HP (no cue) or 15 HP (cue)
+ *  against a 100 HP base — was ~4 HP per hit (too slow, felt like <1% per strike). */
+const BASE_DIRECT_DAMAGE = 15;
 
 /** Base duration of the lightning bolt canvas animation in milliseconds. */
 const BOLT_DURATION_MS = 200;

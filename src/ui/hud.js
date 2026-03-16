@@ -364,7 +364,7 @@ export function initPianoTouchInput(canvas, onNote, onModeToggle) {
     const py   = e.clientY - r.top;
     const W    = canvas.offsetWidth, H = canvas.offsetHeight;
     const note = getKeyAtPoint(px, py, W, H);
-    console.log(`[click] px=${px.toFixed(0)} py=${py.toFixed(0)} note=${note}`);
+    console.log(`[piano click] x=${px.toFixed(0)} y=${py.toFixed(0)} note=${note}`);
     handlePoint(px, py);
   }
   function onTouchStart(e) {
