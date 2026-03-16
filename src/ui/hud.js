@@ -127,6 +127,13 @@ export function renderHUD(ctx, state, W, H) {
   ctx.fillStyle = PANEL_BG;
   ctx.fillRect(0, panelY, W, PANEL_H);
 
+  // Color-coded top border on the panel: blue=summon, red=attack, amber=charge
+  const modeBorderColor = state.inputMode === 'summon' ? 'rgba(68,136,255,0.9)'
+    : state.inputMode === 'attack' ? 'rgba(255,80,80,0.9)'
+    : 'rgba(255,170,34,0.9)';
+  ctx.fillStyle = modeBorderColor;
+  ctx.fillRect(0, panelY, W, 3);
+
   // ── Row 1: hint text + mode badge ────────────────────────────────────────
   const hintY = panelY + ROW1_H / 2;
   ctx.font      = '10px Georgia, serif';
@@ -352,8 +359,13 @@ export function initPianoTouchInput(canvas, onNote, onModeToggle) {
     }
   }
   function onClick(e) {
-    const r = canvas.getBoundingClientRect();
-    handlePoint(e.clientX - r.left, e.clientY - r.top);
+    const r    = canvas.getBoundingClientRect();
+    const px   = e.clientX - r.left;
+    const py   = e.clientY - r.top;
+    const W    = canvas.offsetWidth, H = canvas.offsetHeight;
+    const note = getKeyAtPoint(px, py, W, H);
+    console.log(`[click] px=${px.toFixed(0)} py=${py.toFixed(0)} note=${note}`);
+    handlePoint(px, py);
   }
   function onTouchStart(e) {
     e.preventDefault();   // block ghost clicks & page scroll on mobile / iOS
