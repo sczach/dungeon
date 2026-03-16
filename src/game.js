@@ -635,11 +635,12 @@ function wireButtons() {
     setScene(SCENE.INSTRUMENT_SELECT);
   });
 
-  // TITLE → PLAYING (practice mode — piano, Campfire level, bypasses menus)
-  $('btn-practice')?.addEventListener('click', async () => {
+  // TITLE → CALIBRATION (practice mode — Campfire level, bypasses menus)
+  $('btn-practice')?.addEventListener('click', () => {
     midiInput.start((note) => keyboardInput.dispatchNote(note)).catch(() => {});
-    // Piano uses on-screen keys / MIDI / QWERTY — no microphone needed.
-    startGame(LEVELS_BY_ID['campfire']);
+    state.currentLevel = LEVELS_BY_ID['campfire'];
+    setScene(SCENE.CALIBRATION);
+    startCapture(state).catch(() => {});
   });
 
   // LEVEL_SELECT → INSTRUMENT_SELECT (back)
@@ -671,14 +672,9 @@ function wireButtons() {
     const lvl = state.pendingLevel;
     if (!lvl || lvl.stub) return;
     state.currentLevel = lvl;
-    if (state.instrument === 'guitar' || state.instrument === 'voice') {
-      // Mic-based instruments need capture + calibration before playing.
-      setScene(SCENE.CALIBRATION);
-      startCapture(state).catch(() => {});
-    } else {
-      // Piano uses on-screen keys / MIDI / QWERTY — start immediately, no mic.
-      startGame(lvl);
-    }
+    // All instruments go through calibration — universal audio pipeline.
+    setScene(SCENE.CALIBRATION);
+    startCapture(state).catch(() => {});
   });
 
   // LEVEL_START: ← Map button
