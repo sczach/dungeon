@@ -96,7 +96,9 @@ export function wireSettingsUI(state, onStart) {
     </div>
   `;
   document.body.appendChild(overlay);
+  const isVisible = document.body.dataset.scene === 'title';
   console.log('[settings] overlay appended to body');
+  console.log('[settings] overlay visible=' + isVisible);
 
   // ── Difficulty buttons ────────────────────────────────────────────────────
   for (const level of DIFFICULTIES) {
