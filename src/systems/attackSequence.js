@@ -176,7 +176,7 @@ export class AttackSequenceSystem {
 
     // 3. Damage multiplier: full on cue match, 50% on free play (no active cue)
     const dmgMult = cueActive ? 1.0 : 0.5;
-    state.attackCooldownEnd = now + 400;
+    state.attackCooldownEnd = now + 150;
 
     // 4. Find the best matching enemy sequence (existing priority logic)
     const units = state.units;
