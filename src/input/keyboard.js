@@ -117,9 +117,9 @@ export function playSuccessKill(notes) {
     phrase.push(m ? `${m[1]}${parseInt(m[2], 10) + 1}` : last);
   }
 
-  // Eighth-note tempo at ~165 bpm: step = 0.18 s, note duration = 0.14 s (40 ms gap)
-  const NOTE_STEP = 0.18;
-  const NOTE_DUR  = 0.14;
+  // Eighth-note tempo ~200 bpm: step = 0.15 s, note duration = 0.12 s (30 ms gap)
+  const NOTE_STEP = 0.15;
+  const NOTE_DUR  = 0.12;
 
   // Shared reverb: delay → feedback → delay → destination
   const delay    = ctx.createDelay(1.0);
@@ -130,8 +130,7 @@ export function playSuccessKill(notes) {
   feedback.connect(delay);
   delay.connect(ctx.destination);
 
-  const t0 = ctx.currentTime + 0.02;
-  console.log(`[kill melody] phrase: [${phrase.join(', ')}] step=${NOTE_STEP}s`);
+  console.log(`[kill melody] phrase: [${phrase.join(', ')}] step=${NOTE_STEP}s ctx.currentTime=${ctx.currentTime.toFixed(3)}`);
 
   phrase.forEach((note, i) => {
     const freq = getNoteFreq(note);
@@ -144,15 +143,16 @@ export function playSuccessKill(notes) {
     gain.connect(delay);           // wet (reverb)
     gain.connect(ctx.destination); // dry
 
-    const t = t0 + i * NOTE_STEP;
+    // Explicit stagger: each note anchored to ctx.currentTime at schedule time
+    const t = ctx.currentTime + 0.02 + i * NOTE_STEP;
     // Musical envelope: 20 ms attack → sustain plateau → smooth decay
-    gain.gain.setValueAtTime(0,           t);
+    gain.gain.setValueAtTime(0,                t);
     gain.gain.linearRampToValueAtTime(KILL_GAIN,          t + 0.020);
-    gain.gain.setValueAtTime(KILL_GAIN * 0.65,            t + 0.080);
+    gain.gain.setValueAtTime(KILL_GAIN * 0.65,            t + 0.060);
     gain.gain.linearRampToValueAtTime(0.001,              t + NOTE_DUR);
     osc.start(t);
     osc.stop(t + NOTE_DUR + 0.05);
-    console.log(`[kill melody] note ${i}: ${note} (${freq.toFixed(1)} Hz) @ t+${(0.02 + i * NOTE_STEP).toFixed(3)}s`);
+    console.log(`[kill melody] note ${i}: ${note} (${freq.toFixed(1)} Hz) scheduled @ ctx.currentTime+${(0.02 + i * NOTE_STEP).toFixed(3)}s`);
   });
 
   // Disconnect reverb tail after all notes + decay
