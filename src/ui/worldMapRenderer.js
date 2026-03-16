@@ -547,7 +547,22 @@ export class WorldMapRenderer {
     ctx.fillStyle = '#c8b090';
     ctx.fillText(node.levelGoal ?? '', W / 2, panelY + 34, panelW - 24);
 
-    if (node.skillFocus) {
+    // Show region description for hub and region entry nodes; skill focus for regular nodes
+    if (node.isHub || node.isEntryNode) {
+      const desc = regionInfo?.description ?? node.skillFocus ?? '';
+      ctx.font      = '11px Georgia, serif';
+      ctx.fillStyle = '#7a7060';
+      ctx.fillText(desc, W / 2, panelY + 54, panelW - 24);
+      // Difficulty stars for region entry nodes
+      if (node.isEntryNode && typeof regionInfo?.difficulty === 'number') {
+        const diff     = regionInfo.difficulty;
+        const maxDiff  = 3;
+        const diffStr  = '★'.repeat(diff) + '☆'.repeat(maxDiff - diff);
+        ctx.font      = '11px Georgia, serif';
+        ctx.fillStyle = diff > 0 ? (regionInfo?.color ?? '#e8a030') : '#5a5040';
+        ctx.fillText(`Difficulty: ${diffStr}`, W / 2, panelY + 68, panelW - 24);
+      }
+    } else if (node.skillFocus) {
       ctx.font      = '11px Georgia, serif';
       ctx.fillStyle = '#7a7060';
       ctx.fillText(node.skillFocus, W / 2, panelY + 54, panelW - 24);
@@ -559,13 +574,23 @@ export class WorldMapRenderer {
 
     // PLAY / status button
     if (node.isHub) {
-      // Hub — no play, show "Junction" label
+      // Hub — non-playable junction; pulse gold border when tutorial is complete
+      const tutComplete = prog?.tutorialComplete === true;
+      const pulse       = tutComplete ? (0.7 + 0.3 * Math.sin(t * 2.0)) : 1;
       ctx.fillStyle = 'rgba(30,20,5,0.7)';
       ctx.beginPath();
       ctx.roundRect?.(pb.x, pb.y, pb.w, pb.h, 6) ?? ctx.rect(pb.x, pb.y, pb.w, pb.h);
       ctx.fill();
-      ctx.font      = '13px Georgia, serif';
-      ctx.fillStyle = '#7a7060';
+      if (tutComplete) {
+        // Gold border to signal regions are open
+        ctx.strokeStyle = `rgba(232,160,48,${(0.5 + 0.5 * pulse).toFixed(3)})`;
+        ctx.lineWidth   = 1.5;
+        ctx.beginPath();
+        ctx.roundRect?.(pb.x, pb.y, pb.w, pb.h, 6) ?? ctx.rect(pb.x, pb.y, pb.w, pb.h);
+        ctx.stroke();
+      }
+      ctx.font         = '13px Georgia, serif';
+      ctx.fillStyle    = tutComplete ? `rgba(232,160,48,${(0.7 + 0.3 * pulse).toFixed(3)})` : '#7a7060';
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('← Choose a region →', pb.x + pb.w / 2, pb.y + pb.h / 2);
@@ -582,6 +607,24 @@ export class WorldMapRenderer {
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('▶  PLAY', pb.x + pb.w / 2, pb.y + pb.h / 2);
+    } else if (node.stub && unlocked) {
+      // Unlocked stub — region entry node that is coming soon; use region color tinted
+      ctx.fillStyle = 'rgba(20,15,5,0.80)';
+      ctx.beginPath();
+      ctx.roundRect?.(pb.x, pb.y, pb.w, pb.h, 6) ?? ctx.rect(pb.x, pb.y, pb.w, pb.h);
+      ctx.fill();
+      ctx.strokeStyle = `${regionInfo?.color ?? '#888'}66`;
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.roundRect?.(pb.x, pb.y, pb.w, pb.h, 6) ?? ctx.rect(pb.x, pb.y, pb.w, pb.h);
+      ctx.stroke();
+      ctx.font         = '13px Georgia, serif';
+      ctx.fillStyle    = regionInfo?.color ?? CLR.MUTED;
+      ctx.globalAlpha  = 0.75;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Coming soon ✧', pb.x + pb.w / 2, pb.y + pb.h / 2);
+      ctx.globalAlpha = 1;
     } else {
       ctx.fillStyle = CLR.LOCKED;
       ctx.beginPath();
@@ -591,7 +634,7 @@ export class WorldMapRenderer {
       ctx.fillStyle    = CLR.MUTED;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(node.stub ? 'Coming soon' : '🔒 Locked', pb.x + pb.w / 2, pb.y + pb.h / 2);
+      ctx.fillText('🔒 Locked', pb.x + pb.w / 2, pb.y + pb.h / 2);
     }
   }
 

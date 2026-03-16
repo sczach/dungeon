@@ -42,12 +42,54 @@ import { LEVELS_BY_ID } from './levels.js';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const REGIONS = Object.freeze({
-  tutorial:     { label: 'Tutorial',          color: '#e8a030', tint: 'rgba(232,160,48,0.08)'  },
-  hub:          { label: 'The Crossroads',    color: '#ffffff', tint: 'rgba(255,255,255,0.04)' },
-  tone:         { label: 'Tone & Technique',  color: '#4488ff', tint: 'rgba(40,80,220,0.10)'   },
-  rhythm:       { label: 'Rhythm & Timing',   color: '#ff8822', tint: 'rgba(220,100,20,0.10)'  },
-  theory:       { label: 'Music Theory',      color: '#aa44ff', tint: 'rgba(150,40,220,0.10)'  },
-  musicianship: { label: 'Musicianship',      color: '#44cc66', tint: 'rgba(40,180,80,0.10)'   },
+  tutorial: {
+    label:           'Tutorial',
+    color:           '#e8a030',
+    tint:            'rgba(232,160,48,0.08)',
+    difficulty:      0,
+    description:     'Learn the core mechanics of Chord Wars.',
+    unlockCondition: null,
+  },
+  hub: {
+    label:           'The Crossroads',
+    color:           '#ffffff',
+    tint:            'rgba(255,255,255,0.04)',
+    difficulty:      null,
+    description:     'A junction where all musical paths converge. Choose a region to begin.',
+    unlockCondition: 'Complete all 4 tutorial levels',
+  },
+  tone: {
+    label:           'Tone & Technique',
+    color:           '#4488ff',
+    tint:            'rgba(40,80,220,0.10)',
+    difficulty:      1,
+    description:     'Build clean, accurate note production and physical instrument skill.',
+    unlockCondition: 'Complete tutorials (unlock The Crossroads)',
+  },
+  rhythm: {
+    label:           'Rhythm & Timing',
+    color:           '#ff8822',
+    tint:            'rgba(220,100,20,0.10)',
+    difficulty:      1,
+    description:     'Develop rhythmic accuracy, timing feel, and pulse control.',
+    unlockCondition: 'Complete tutorials (unlock The Crossroads)',
+  },
+  theory: {
+    label:           'Music Theory',
+    color:           '#aa44ff',
+    tint:            'rgba(150,40,220,0.10)',
+    difficulty:      2,
+    description:     'Understand what you play — notes, scales, chords, and harmony.',
+    unlockCondition: 'Complete tutorials (unlock The Crossroads)',
+  },
+  musicianship: {
+    label:           'Musicianship',
+    color:           '#44cc66',
+    tint:            'rgba(40,180,80,0.10)',
+    difficulty:      3,
+    description:     'Express yourself musically — phrasing, dynamics, and ear training.',
+    unlockCondition: 'Complete tutorials (unlock The Crossroads)',
+  },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
