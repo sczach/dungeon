@@ -425,6 +425,47 @@ export class Renderer {
       ctx.fillText('Not enough resources!', BAR_X + BAR_W / 2, BAR_Y + BAR_H / 2);
     }
 
+    // ── Large "Play: C3 → E3 → G3" cue below the bar ─────────────────────
+    // Makes the summon prompt unmissable, especially for new players.
+    {
+      const parts  = tab.queue.map((s, i) => {
+        const done = s.status === 'hit';
+        const miss = s.status === 'miss';
+        const active = (i === tab.activeIndex);
+        return { note: s.note, done, miss, active };
+      });
+      const cueLabelY = BAR_Y + BAR_H + 18;
+      const ARROW = ' → ';
+      let fullText = 'Play: ';
+      parts.forEach((p, i) => { fullText += p.note + (i < parts.length - 1 ? ARROW : ''); });
+
+      // Shadow for readability over any map background
+      ctx.font         = 'bold 18px Georgia, serif';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle    = 'rgba(0,0,0,0.7)';
+      ctx.fillText(fullText, W / 2 + 1, cueLabelY + 1);
+
+      // Draw each segment with per-note colour
+      let xCursor = W / 2 - ctx.measureText(fullText).width / 2;
+      const prefixW = ctx.measureText('Play: ').width;
+      xCursor += prefixW;
+      ctx.fillStyle = 'rgba(240,234,214,0.7)';
+      ctx.textAlign = 'left';
+      ctx.fillText('Play: ', W / 2 - ctx.measureText(fullText).width / 2, cueLabelY);
+
+      parts.forEach((p, i) => {
+        ctx.fillStyle = p.done ? '#44ff88' : p.miss ? '#ff4444' : p.active ? CLR.ACCENT : 'rgba(240,234,214,0.55)';
+        ctx.fillText(p.note, xCursor, cueLabelY);
+        xCursor += ctx.measureText(p.note).width;
+        if (i < parts.length - 1) {
+          ctx.fillStyle = 'rgba(200,185,155,0.4)';
+          ctx.fillText(ARROW, xCursor, cueLabelY);
+          xCursor += ctx.measureText(ARROW).width;
+        }
+      });
+    }
+
     ctx.restore();
   }
 
@@ -1109,6 +1150,20 @@ export class Renderer {
     const t     = state.time || 0;
     const style = state.cueDisplayStyle || 'note';  // 'note' | 'qwerty' | 'staff'
 
+    // Find nearest enemy to the player base (smallest x) for prominence highlighting
+    let nearestEnemy = null;
+    let nearestX     = Infinity;
+    for (const u of state.units) {
+      if (u.alive && u.team === 'enemy' && u.x < nearestX) {
+        nearestX     = u.x;
+        nearestEnemy = u;
+      }
+    }
+
+    // Track occupied Y-bands to offset overlapping cue displays
+    // Key: Math.round(unit.y / 30) bucket → count of cues already drawn at that band
+    const yBandCount = new Map();
+
     for (const unit of state.units) {
       if (!unit.alive || unit.team !== 'enemy') continue;
       if (!unit.attackSeq || unit.attackSeq.length === 0) continue;
@@ -1117,9 +1172,21 @@ export class Renderer {
       const r      = unit.radius ?? 12;
       const PILL_W = 30, PILL_H = 16, GAP = 3;
       const totalW = seqLen * (PILL_W + GAP) - GAP;
-      const baseY  = unit.y - r - 14 - PILL_H;
+
+      // Offset overlapping units: units with similar Y get stacked vertically
+      const yBand  = Math.round(unit.y / 40);
+      const yCount = yBandCount.get(yBand) || 0;
+      yBandCount.set(yBand, yCount + 1);
+      const yOffset = yCount * (PILL_H + 6);   // each extra unit in same band shifts up
+
+      const baseY  = unit.y - r - 14 - PILL_H - yOffset;
+
+      // Dim non-nearest enemies when swarm is present
+      const isNearest = unit === nearestEnemy;
+      const dimAlpha  = isNearest ? 1.0 : 0.45;
 
       ctx.save();
+      ctx.globalAlpha = dimAlpha;
 
       if (style === 'staff') {
         // ── Staff-only mode: 5-line staff + filled note heads, no pill row ───
