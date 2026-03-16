@@ -23,7 +23,7 @@ import {
   LANE_Y, LANE_HEIGHT,
   BASE_WIDTH, PLAYER_BASE_X, ENEMY_BASE_X,
 } from './constants.js';
-import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
+import { startCapture, updateAudio, updateCalibration, resumeAudioContext } from './audio/index.js';
 import { Unit }                  from './entities/unit.js';
 import { Base }                  from './systems/base.js';
 import { keyboardInput, playSuccessKill } from './input/keyboard.js';
@@ -110,6 +110,9 @@ function createInitialState() {
       detectedNote:  null,   // string | null — e.g. 'E2'
       detectedChord: null,   // string | null — e.g. 'C3' (piano) or 'Em' (mic)
       confidence:    0,      // 0–1
+      pitchStable:   false,  // true when same note detected for ≥ STABLE_FRAMES consecutive frames
+      rms:           0,      // current RMS amplitude (written each frame for debug overlay)
+      ctxState:      'none', // AudioContext.state string (written each frame for debug overlay)
       waveformData:  null,   // Float32Array for calibration visualiser
       lastNotes:     [],     // string[] — rolling buffer of recent note presses
       spawnTier:     null,   // legacy — not set by new keyboard; kept for audio subsystem compat
@@ -235,6 +238,9 @@ function createInitialState() {
     allowedModes:      null,   // null = all modes; string[] = tutorial lock
     chargeUnlocksBase: false,  // T4: enemy base invulnerable until first charge
 
+    // ── Debug ─────────────────────────────────────────────────────────────────
+    debugOverlay: false,         // toggled by backtick key; draws audio pipeline HUD
+
     // ── Skill buff fields (reset + applied by applySkills()) ─────────────────
     skillSummonCooldownBonus:  0,
     skillBaseHpBonus:          0,
@@ -297,6 +303,14 @@ let progression = loadProgress();
 let _prevPlayerHp = Infinity;
 /** Previous modeAnnounce timestamp — detects mode switch. */
 let _prevModeAnnounce = 0;
+/**
+ * Last mic-detected note dispatched to the game systems.
+ * Tracks the folded (C3-octave) note name so the same note isn't dispatched
+ * on every stable frame — only on the leading edge of each new note.
+ * Reset to null when confidence hits 0 so the same note can re-trigger.
+ * @type {string|null}
+ */
+let _prevMicNote = null;
 
 const settingsUI           = new SettingsUI();
 const levelSelectUI        = new LevelSelectUI();
@@ -627,10 +641,11 @@ function wireButtons() {
     setScene(SCENE.INSTRUMENT_SELECT);
   });
 
-  // TITLE → PLAYING (practice mode — piano, Campfire level, bypasses menus)
+  // TITLE → CALIBRATION (practice mode — Campfire level; still needs mic setup)
   $('btn-practice')?.addEventListener('click', async () => {
+    state.currentLevel = LEVELS_BY_ID['campfire'];
+    setScene(SCENE.CALIBRATION);
     startCapture(state).catch(() => {});
-    startGame(LEVELS_BY_ID['campfire']);
   });
 
   // LEVEL_SELECT → INSTRUMENT_SELECT (back)
@@ -639,7 +654,13 @@ function wireButtons() {
   });
 
   // CALIBRATION → PLAYING
-  $('btn-calibration-done')?.addEventListener('click', () => startGame());
+  // resumeAudioContext() ensures the AudioContext is running before gameplay begins.
+  // On mobile, it may still be suspended even after getUserMedia succeeds.
+  $('btn-calibration-done')?.addEventListener('click', () => {
+    resumeAudioContext()
+      .then(() => startGame())
+      .catch(() => startGame());
+  });
 
   // VICTORY / DEFEAT → PLAYING (replay same level)
   $('btn-play-again-victory')?.addEventListener('click', () => startGame(state.currentLevel));
@@ -657,22 +678,31 @@ function wireButtons() {
   // ENDGAME → WORLD_MAP
   $('btn-endgame-ls')?.addEventListener('click', () => setScene(SCENE.WORLD_MAP));
 
-  // LEVEL_START: PLAY button — start the pending level
+  // LEVEL_START: PLAY button — all instruments go through CALIBRATION so the
+  // AudioContext is created inside a user gesture and the mic bridge is ready.
   $('btn-lst-play')?.addEventListener('click', () => {
     const lvl = state.pendingLevel;
     if (!lvl || lvl.stub) return;
     state.currentLevel = lvl;
-    if (state.instrument === 'guitar' || state.instrument === 'voice') {
-      setScene(SCENE.CALIBRATION);
-      startCapture(state).catch(() => {});
-    } else {
-      startCapture(state).catch(() => {});
-      startGame(lvl);
-    }
+    setScene(SCENE.CALIBRATION);
+    startCapture(state).catch(() => {});
   });
 
   // LEVEL_START: ← Map button
   $('btn-lst-back')?.addEventListener('click', () => setScene(SCENE.WORLD_MAP));
+
+  // ── Debug overlay — backtick (`) toggles audio pipeline HUD ─────────────
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Backquote') {
+      state.debugOverlay = !state.debugOverlay;
+      console.log(`[debug] overlay ${state.debugOverlay ? 'ON' : 'OFF'}`);
+    }
+  });
+
+  // ── Mobile AudioContext self-heal — resume on any canvas touch ───────────
+  canvas.addEventListener('touchstart', () => {
+    if (state.scene === SCENE.PLAYING) resumeAudioContext().catch(() => {});
+  }, { passive: true });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -717,16 +747,21 @@ function startGame(levelConfig) {
   });
 
   // Preserve canvas dimensions — managed by onResize(), not game logic.
-  const savedCanvas   = state.canvas;
-  const savedWorldMap = state.worldMap;
+  const savedCanvas      = state.canvas;
+  const savedWorldMap    = state.worldMap;
+  const savedDebugOverlay = state.debugOverlay;
   Object.assign(state, fresh);
-  state.canvas   = savedCanvas;
-  state.worldMap = savedWorldMap;
+  state.canvas        = savedCanvas;
+  state.worldMap      = savedWorldMap;
+  state.debugOverlay  = savedDebugOverlay;  // persist debug overlay across restarts
 
   // Apply tutorial / level-start mechanic flags
   state.allowedModes      = level.allowedModes      ?? null;
   state.chargeUnlocksBase = level.chargeUnlocksBase  ?? false;
   state._progression      = progression;   // read-only ref for renderer
+
+  // Reset mic-bridge state so stale note doesn't block re-triggering
+  _prevMicNote = null;
 
   // Build bases at correct canvas-relative positions
   const W     = state.canvas.width;
@@ -1058,6 +1093,28 @@ function update(dt) {
 
       // Audio pipeline (mic chord detection / audio analysis)
       updateAudio(state, dt);
+
+      // ── Mic → game note bridge ────────────────────────────────────────────
+      // updateAudio() writes state.audio.detectedNote (e.g. 'C4') and sets
+      // state.audio.pitchStable after 6 consecutive same-note frames (~100 ms).
+      // Game systems (tablature, cueSystem, attackSequence) are purely event-
+      // driven via keyboardInput.dispatchNote() — they never poll state.audio.
+      // This bridge is the ONLY place that converts detected audio → note events.
+      if (state.audio.ready) {
+        if (state.audio.pitchStable && state.audio.detectedNote) {
+          // Fold detected octave to C3 octave (the octave used by piano layout
+          // and expected by tablature/cue note names: 'C3'–'B3').
+          const micNote = state.audio.detectedNote.replace(/\d+$/, '3');
+          if (micNote !== _prevMicNote) {
+            _prevMicNote = micNote;
+            keyboardInput.dispatchNote(micNote);
+            console.debug(`[mic-bridge] note: ${state.audio.detectedNote} → ${micNote}`);
+          }
+        } else if (state.audio.confidence === 0) {
+          // Signal fully faded — reset so the same note can re-trigger next time
+          _prevMicNote = null;
+        }
+      }
 
       // Sound engine — sync BPM/bass from state; detect damage + mode change
       syncSoundEngine(state);

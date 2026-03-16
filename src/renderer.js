@@ -98,6 +98,8 @@ export class Renderer {
       case SCENE.DEFEAT:            this._drawDefeat(state, W, H);      break;
       case SCENE.ENDGAME:           this._drawEndgame(W, H);            break;
     }
+    // Debug overlay — toggled by backtick key; always on top of all scenes
+    if (state.debugOverlay) this._drawDebugOverlay(state, W, H);
   }
 
   // ─────────────────────────────────────────
@@ -1799,6 +1801,75 @@ export class Renderer {
     ctx.fillStyle    = '#a09880';
     ctx.textBaseline = 'bottom';
     ctx.fillText(tab, W / 2, PANEL_Y + PANEL_H - 5);
+
+    ctx.restore();
+  }
+
+  // ─────────────────────────────────────────
+  // Debug overlay (backtick toggle)
+  // ─────────────────────────────────────────
+
+  /**
+   * Draw an audio-pipeline diagnostic HUD in the top-left corner.
+   * Toggled by pressing the backtick (`) key.
+   * Reads only from state.audio.* — no imports needed.
+   *
+   * @param {object} state
+   * @param {number} W
+   * @param {number} H
+   */
+  _drawDebugOverlay(state, W, H) {   // eslint-disable-line no-unused-vars
+    const ctx  = this.ctx;
+    const au   = state.audio;
+
+    // ── Background panel ──────────────────────────────────────────────────
+    const PAD   = 10;
+    const LH    = 18;                      // line height
+    const lines = [
+      `scene:       ${state.scene}`,
+      `ctx:         ${au.ctxState ?? '—'}`,
+      `ready:       ${au.ready}`,
+      `rms:         ${(au.rms ?? 0).toFixed(4)}`,
+      `noiseFloor:  ${(au.noiseFloor ?? 0).toFixed(4)}`,
+      `pitchStable: ${au.pitchStable}`,
+      `detNote:     ${au.detectedNote ?? '—'}`,
+      `detChord:    ${au.detectedChord ?? '—'}`,
+      `confidence:  ${(au.confidence ?? 0).toFixed(3)}`,
+    ];
+
+    const PW = 220;
+    const PH = PAD * 2 + lines.length * LH;
+    const PX = 6;
+    const PY = 6;
+
+    ctx.save();
+    ctx.globalAlpha = 0.82;
+    ctx.fillStyle   = '#0a0a1a';
+    ctx.fillRect(PX, PY, PW, PH);
+    ctx.strokeStyle = '#e8a030';
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(PX, PY, PW, PH);
+    ctx.globalAlpha = 1;
+
+    ctx.font         = '12px monospace';
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'top';
+
+    lines.forEach((line, i) => {
+      // Colour-code problem states
+      let fill = '#c8c0a0';
+      if (line.startsWith('ctx') && au.ctxState !== 'running') fill = '#ff6655';
+      if (line.startsWith('ready') && !au.ready)               fill = '#ff6655';
+      if (line.startsWith('rms') && (au.rms ?? 0) === 0)       fill = '#ffbb44';
+      ctx.fillStyle = fill;
+      ctx.fillText(line, PX + PAD, PY + PAD + i * LH);
+    });
+
+    // Header label
+    ctx.fillStyle    = '#e8a030';
+    ctx.font         = 'bold 11px monospace';
+    ctx.textAlign    = 'center';
+    ctx.fillText('◉ AUDIO DEBUG  [`] to close', PX + PW / 2, PY + 2);
 
     ctx.restore();
   }

@@ -47,6 +47,14 @@ let _audioCtx   = null;
 /** @type {AnalyserNode|null} */
 let _analyser   = null;
 
+/**
+ * Module-level reference to the MediaStreamSourceNode.
+ * MUST be kept alive at module scope — local variables are eligible for GC
+ * once the function returns, which silently disconnects the mic pipeline.
+ * @type {MediaStreamSourceNode|null}
+ */
+let _sourceNode = null;
+
 /** Actual sample rate delivered by the browser (may differ from requested). */
 let _sampleRate = 44100;
 
@@ -93,8 +101,10 @@ export async function startCapture(state) {
     _audioCtx  = audioCtx;
     _sampleRate = audioCtx.sampleRate;
 
-    const sourceNode = audioCtx.createMediaStreamSource(stream);
-    _analyser = createAnalyzer(audioCtx, sourceNode);
+    // Store at module level — prevents garbage collection that would silently
+    // disconnect the mic from the analyser node.
+    _sourceNode = audioCtx.createMediaStreamSource(stream);
+    _analyser = createAnalyzer(audioCtx, _sourceNode);
 
     // Wire iOS gesture unlock so the context survives screen-lock / phone calls
     unlockAudioContext(audioCtx);
@@ -114,12 +124,29 @@ export async function startCapture(state) {
 }
 
 /**
+ * Attempt to resume a suspended AudioContext.
+ * Call from any user-gesture handler or game loop to recover from browser suspension.
+ * Safe to call when capture was never started.
+ * @returns {Promise<void>}
+ */
+export function resumeAudioContext() {
+  if (_audioCtx?.state === 'suspended') {
+    return _audioCtx.resume().catch(err =>
+      console.warn('[audio] resume failed:', err)
+    );
+  }
+  return Promise.resolve();
+}
+
+
+/**
  * Tear down microphone and AudioContext.
  * Safe to call when capture was never started.
  */
 export function stopCapture() {
   _audioCtx      = null;
   _analyser      = null;
+  _sourceNode    = null;
   _captureFailed = false;
   _calibFrames   = 0;
   _gateState.count        = 0;
@@ -207,12 +234,24 @@ export function updateCalibration(state) {
  *                         future time-weighted smoothing)
  */
 export function updateAudio(state, dt) {   // eslint-disable-line no-unused-vars
+  // Always write ctxState so the debug overlay can read it even when returning early
+  state.audio.ctxState = _audioCtx?.state ?? 'none';
+
   if (!_analyser || !state.audio.ready) return;
-  if (_audioCtx?.state !== 'running')   return;
+
+  // If suspended (e.g. mobile tab-switch), attempt a silent resume each frame.
+  // The resume() call is async — we skip this frame's analysis but try again
+  // next frame so recovery is automatic without requiring another user gesture.
+  if (_audioCtx?.state === 'suspended') {
+    _audioCtx.resume().catch(() => {});
+    return;
+  }
+  if (_audioCtx?.state !== 'running') return;
 
   // ── 1. Time domain snapshot ───────────────────────────────────────────────
   const { timeDomain, rms } = readTimeDomain(_analyser);
   state.audio.waveformData  = timeDomain;
+  state.audio.rms           = rms;  // expose for debug overlay
 
   // ── 2. Noise gate ─────────────────────────────────────────────────────────
   const live = isAboveNoiseGate(rms, state.audio.noiseFloor, _gateState);
