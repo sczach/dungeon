@@ -635,11 +635,12 @@ function wireButtons() {
     setScene(SCENE.INSTRUMENT_SELECT);
   });
 
-  // TITLE → PLAYING (practice mode — piano, Campfire level, bypasses menus)
-  $('btn-practice')?.addEventListener('click', async () => {
+  // TITLE → CALIBRATION (practice mode — Campfire level, bypasses menus)
+  $('btn-practice')?.addEventListener('click', () => {
     midiInput.start((note) => keyboardInput.dispatchNote(note)).catch(() => {});
+    state.currentLevel = LEVELS_BY_ID['campfire'];
+    setScene(SCENE.CALIBRATION);
     startCapture(state).catch(() => {});
-    startGame(LEVELS_BY_ID['campfire']);
   });
 
   // LEVEL_SELECT → INSTRUMENT_SELECT (back)
@@ -671,13 +672,9 @@ function wireButtons() {
     const lvl = state.pendingLevel;
     if (!lvl || lvl.stub) return;
     state.currentLevel = lvl;
-    if (state.instrument === 'guitar' || state.instrument === 'voice') {
-      setScene(SCENE.CALIBRATION);
-      startCapture(state).catch(() => {});
-    } else {
-      startCapture(state).catch(() => {});
-      startGame(lvl);
-    }
+    // All instruments go through calibration — universal audio pipeline.
+    setScene(SCENE.CALIBRATION);
+    startCapture(state).catch(() => {});
   });
 
   // LEVEL_START: ← Map button
