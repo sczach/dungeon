@@ -27,6 +27,7 @@ import { startCapture, updateAudio, updateCalibration } from './audio/index.js';
 import { Unit }                  from './entities/unit.js';
 import { Base }                  from './systems/base.js';
 import { keyboardInput, playSuccessKill } from './input/keyboard.js';
+import { midiInput }                      from './input/midi.js';
 import { initPianoTouchInput }            from './ui/hud.js';
 import { SettingsUI }                     from './ui/settings.js';
 import { LevelSelectUI }                  from './ui/levelselect.js';
@@ -164,6 +165,9 @@ function createInitialState() {
     showChordCues:   true,       // show chord name + tab at top; overridden by loadSettings()
     cueDisplayStyle: 'note',     // 'note'|'qwerty'|'staff'; overridden by loadSettings()
     currentPrompt:   null,       // { chord, tab, difficulty } — set by PromptManager
+
+    // ── Guitar-Hero note display — large centred note when any key is pressed ──
+    noteDisplay: { note: null, startTime: 0 },
 
     // ── Combo — consecutive correct inputs; milestones grant bonus resources ──
     combo:              0,
@@ -626,11 +630,14 @@ function wireButtons() {
 
   // TITLE → INSTRUMENT_SELECT
   $('btn-start')?.addEventListener('click', () => {
+    // Initialise MIDI on first user gesture (required by browser security policy)
+    midiInput.start((note) => keyboardInput.dispatchNote(note)).catch(() => {});
     setScene(SCENE.INSTRUMENT_SELECT);
   });
 
   // TITLE → PLAYING (practice mode — piano, Campfire level, bypasses menus)
   $('btn-practice')?.addEventListener('click', async () => {
+    midiInput.start((note) => keyboardInput.dispatchNote(note)).catch(() => {});
     startCapture(state).catch(() => {});
     startGame(LEVELS_BY_ID['campfire']);
   });

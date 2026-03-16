@@ -327,9 +327,13 @@ export class KeyboardInput {
     state.audio.detectedChord = note;
     state.audio.confidence    = 0.95;
     state.audio.detectedNote  = null;
-    // 2. Tone
+    // 2. Guitar-Hero style note display (large, centred, persistent for 1s)
+    if (state.noteDisplay !== undefined) {
+      state.noteDisplay = { note, startTime: performance.now() };
+    }
+    // 3. Tone
     try { playTone(note); } catch (_) {}
-    // 3. Route by mode
+    // 4. Route by mode
     if (state.inputMode === 'summon') {
       if (this._tablature) this._tablature.onNote(note, state);
     } else {
