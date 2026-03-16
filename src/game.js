@@ -428,6 +428,7 @@ function _handleVictory() {
     saveProgress(progression);
     state._progression                   = progression;
     state.worldMap.showTutorialComplete  = true; // triggers banner + hub pan animation
+    console.log('[unlock] Tutorial complete → The Crossroads and all region entry nodes unlocked');
   }
 
   // Track last played node so world map can highlight it with a teal ring
@@ -483,6 +484,7 @@ function setScene(scene) {
       state.worldMap.regionsUnlockedBanner = { startTime: performance.now() };
     }
     state._progression = progression;
+    console.log(`[world-map] Arrived — tutorialComplete=${progression.tutorialComplete} bestStars=${JSON.stringify(progression.bestStars)}`);
   }
 
   // Populate level-start overlay from pending level node
@@ -1574,7 +1576,7 @@ initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) =
 function _applyWorldMapZoom(newZoom, cx, cy, immediate = false) {
   const cam     = state.worldMap;
   const oldZoom = cam.zoom;
-  newZoom       = Math.max(0.6, Math.min(1.4, newZoom));
+  newZoom       = Math.max(0.3, Math.min(1.4, newZoom));
   if (immediate) {
     // Adjust camera so the world point under cursor stays fixed
     cam.cameraX = cx - (cx - cam.cameraX) / oldZoom * newZoom;
@@ -1628,7 +1630,8 @@ function _handleWorldMapClick(x, y) {
   const nodeId = getNodeAtPoint(wx, wy, W, H, WORLD_MAP_NODES);
   if (nodeId) {
     const node = WORLD_MAP_NODES_BY_ID[nodeId];
-    if (node && !node.stub && isNodeUnlocked(node, progression)) {
+    // Allow selecting any unlocked node (including stubs — they show "Coming soon")
+    if (node && isNodeUnlocked(node, progression)) {
       state.worldMap.selectedNodeId = nodeId;
     }
   }
