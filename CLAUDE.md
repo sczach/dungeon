@@ -97,6 +97,7 @@ INSTRUMENT_SELECT   ← choose Piano / Guitar (soon) / Voice (soon)
 - Camera pan via drag; `state.worldMap.{cameraX, cameraY, isDragging, ...}`.
 - `getNodeAtPoint(wx, wy, W, H, nodes)` and `getPlayButtonBounds(W, H)` exported for game.js hit-testing.
 - Node unlock: `isNodeUnlocked(node, progression)` — checks `bestStars[id] >= 1` for each `unlockRequires` entry.
+  Special case: `'hub'` requirement is satisfied by `progression.tutorialComplete === true` (hub is non-playable).
 - Stub nodes (`node.stub === true`) are display-only locked placeholders (not yet implemented levels).
 
 ---
@@ -208,7 +209,7 @@ src/
     instrumentselect.js   — InstrumentSelectUI (Piano/Guitar/Voice cards)
     levelselect.js        — LevelSelectUI + skill tree panel (legacy; still accessible)
     settings.js           — SettingsUI (audio, difficulty, display settings)
-    screens.js            — per-scene screen rendering
+    screens.js            — per-scene screen rendering; wireSettingsUI() injects title overlay
   data/
     chords.js             — CHORD_DATA, CHORD_FALLBACK
     levels.js             — LEVELS (Campfire/Crossing/Siege), computeStars(), isLevelUnlocked()
@@ -217,17 +218,95 @@ src/
                               winCondition, chargeUnlocksBase, tutorialOverlay, isTutorial, stub, … }
     lessons.js            — LESSONS: level-as-lesson content (concept, notes, success metrics)
     skills.js             — SKILLS: Foundation/Technique/Mastery tiers (musical progression)
+docs/
+  skills/
+    SOUND_ENGINE.md       — skill definition: audio, melody, Web Audio API
+    GAMEPLAY_ENGINE.md    — skill definition: balance, difficulty, scoring
+    GRAPHICS_ENGINE.md    — skill definition: rendering, UI, visual feedback
+    COMPOSITION_ENGINE.md — skill definition: player songwriting / melody arc
+    AI_ENGINE.md          — skill definition: NPC behavior, enemy AI
+.claude/
+  commands/
+    gametest.md           — gameplay test pass instructions
+    audiotest.md          — audio pipeline test instructions
+    balancecheck.md       — game balance evaluation instructions
 ```
 
 ---
 
 ## Planning docs (separate location)
 `C:\Users\wbryk\OneDrive\Desktop\Chordwars\`
-- `SONNET_PROJECT_INSTRUCTIONS 1C.md` — full settled specs (CANONICAL)
+- `PHASE_2A_STRATEGY.md` — Phase 2A bug list, root causes, fix strategy (CANONICAL for this phase)
 - `Chord_Wars_GDD_v1.0.docx` — Game Design Document
 - `Chord_Wars_Roadmap_v1.1.docx` — Development Roadmap
 - `Chord_Wars_Wireframes.jsx` — UI Wireframes
 - `REF_AUDIO.md`, `REF_BACKEND.md`, `REF_GAMECORE.md` — Reference docs
 
-## Current phase
-**Phase 1F — Tutorial sequence, world map, level-start screen**
+---
+
+## Current Phase: Phase 2A — Bug Crush & Core Polish
+
+### Phase 2A Goals
+Fix all gameplay-blocking bugs before adding new content. Every bug listed below was
+confirmed by live playtesting. No new features until this list is empty.
+
+### Known Bugs (Phase 2A target)
+| # | Bug | File(s) | Status |
+|---|-----|---------|--------|
+| 1 | World map stays locked after tutorial | worldMap.js | ✅ Fixed |
+| 2 | Enemy base 1% damage per hit | attackSequence.js | ✅ Fixed |
+| 3 | Swarming enemies produce unreadable overlapping cues | renderer.js | ✅ Fixed |
+| 4 | Input mode (summon/attack/charge) not obvious | hud.js | ✅ Fixed |
+| 5 | Victory screen navigation buttons blocked | game.js | ✅ Fixed |
+| 6 | Kill melody plays all notes simultaneously | keyboard.js | ✅ Fixed |
+| 7 | Mouse/touch piano keys silent | hud.js | ✅ Debug logging added |
+| 8 | Settings menu never appears | game.js, screens.js | ✅ Fixed |
+| 9 | Summon cues not visible mid-fight | renderer.js | ✅ Fixed |
+
+### Phase Roadmap
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 1A–1F | Core engine, tutorial, world map | ✅ Complete |
+| 2A | Bug Crush & Core Polish | 🔄 In Progress |
+| 2B | Content Expansion (5+ new levels, skill tree polish) | ⬜ Upcoming |
+| 2C | Guitar & Voice input modes | ⬜ Upcoming |
+| 3A | Multiplayer architecture spike | ⬜ Future |
+| 4A | Ship beta | ⬜ Future |
+
+---
+
+## Git workflow — mandatory rules
+- **NEVER push to master directly.** All changes go through PRs.
+- Branch naming: `claude/<short-slug>` for AI-authored branches, `feat/<name>` / `fix/<name>` for human branches.
+- One branch per logical change. Commit after each working increment.
+- Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `perf:`, `refactor:`
+- PR body must include: summary bullets, test plan checklist, affected files.
+- Merge only when tests pass and PR has been reviewed (even self-review).
+
+---
+
+## Agent-tuning workflow
+Each engine domain has a skill file in `docs/skills/`. When a domain needs improvement:
+
+1. Read the relevant `docs/skills/<ENGINE>.md` for context and constraints.
+2. Run `/gametest` (or `/audiotest`, `/balancecheck`) to reproduce the issue.
+3. File a bug in the known-bugs table above or in the PR.
+4. Implement the fix — read all affected files first, then edit.
+5. Re-run the relevant test command to verify pass criteria.
+6. Update the skill file if the domain's constraints changed.
+
+```
+Skill file → test command → fail → fix implementation → pass → update skill
+```
+
+---
+
+## Workflow commands
+- Run `/plan` before implementing any feature that touches 3+ files
+- Run `/gametest` to verify gameplay behavior before committing
+- Run `/audiotest` to verify audio pipeline before committing
+- Run `/balancecheck` to verify game balance changes
+- Run `/code-review` before every PR
+- Use `build-error-resolver` agent for any runtime errors — don't troubleshoot manually
+- Use `refactor-cleaner` agent for dead code, never inline
+- Run `/checkpoint` before starting a new major feature
