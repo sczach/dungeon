@@ -30,6 +30,9 @@ export class Base {
   takeDamage(amount) {
     if (!this.vulnerable) return;
     this.hp = Math.max(0, this.hp - amount);
+    if (this.team === 'enemy') {
+      console.log(`[base damage] enemy base took ${Math.round(amount)} damage, now at ${this.hp}/${this.maxHp} hp`);
+    }
   }
 
   /** @returns {boolean} */

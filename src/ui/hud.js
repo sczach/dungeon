@@ -64,14 +64,16 @@ const KEY_BLACK   = '#2e2e2e';    // dark grey black keys
 const KEY_PRESS   = AMBER;
 
 // ─── Dimensions ───────────────────────────────────────────────────────────
-const PIANO_H    = 70;   // piano strip height
+const PIANO_H    = 88;   // piano strip height (88 px = Apple HIG min touch target)
 const ROW1_H     = 28;   // hint + mode badge row
 const MODE_BTN_H = 48;   // SUMMON / ATTACK toggle buttons (mobile-friendly)
 const PANEL_H    = ROW1_H + MODE_BTN_H + PIANO_H;
 
 // ─── Helpers: piano geometry (computed from W / H each frame) ─────────────
 function pianoGeom(W, H) {
-  const PIANO_W  = W * 0.5;
+  // On narrow screens (mobile) use 90 % width so each key ≥ 44 px wide.
+  // On wide screens (desktop / tablet) keep the centred 50 % layout.
+  const PIANO_W  = W < 600 ? W * 0.90 : W * 0.5;
   const PIANO_X  = (W - PIANO_W) / 2;
   const wkW      = PIANO_W / WHITE_KEYS.length;
   const bkW      = wkW * 0.58;
@@ -364,7 +366,7 @@ export function initPianoTouchInput(canvas, onNote, onModeToggle) {
     const py   = e.clientY - r.top;
     const W    = canvas.offsetWidth, H = canvas.offsetHeight;
     const note = getKeyAtPoint(px, py, W, H);
-    console.log(`[click] px=${px.toFixed(0)} py=${py.toFixed(0)} note=${note}`);
+    console.log(`[piano click] x=${px.toFixed(0)} y=${py.toFixed(0)} note=${note}`);
     handlePoint(px, py);
   }
   function onTouchStart(e) {

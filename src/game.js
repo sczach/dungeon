@@ -27,6 +27,7 @@ import { startCapture, updateAudio, updateCalibration, resumeAudioContext } from
 import { Unit }                  from './entities/unit.js';
 import { Base }                  from './systems/base.js';
 import { keyboardInput, playSuccessKill } from './input/keyboard.js';
+import { midiInput }                      from './input/midi.js';
 import { initPianoTouchInput }            from './ui/hud.js';
 import { SettingsUI }                     from './ui/settings.js';
 import { LevelSelectUI }                  from './ui/levelselect.js';
@@ -167,6 +168,9 @@ function createInitialState() {
     showChordCues:   true,       // show chord name + tab at top; overridden by loadSettings()
     cueDisplayStyle: 'note',     // 'note'|'qwerty'|'staff'; overridden by loadSettings()
     currentPrompt:   null,       // { chord, tab, difficulty } — set by PromptManager
+
+    // ── Guitar-Hero note display — large centred note when any key is pressed ──
+    noteDisplay: { note: null, startTime: 0 },
 
     // ── Combo — consecutive correct inputs; milestones grant bonus resources ──
     combo:              0,
@@ -442,6 +446,7 @@ function _handleVictory() {
     saveProgress(progression);
     state._progression                   = progression;
     state.worldMap.showTutorialComplete  = true; // triggers banner + hub pan animation
+    console.log('[unlock] Tutorial complete → The Crossroads and all region entry nodes unlocked');
   }
 
   // Track last played node so world map can highlight it with a teal ring
@@ -497,6 +502,7 @@ function setScene(scene) {
       state.worldMap.regionsUnlockedBanner = { startTime: performance.now() };
     }
     state._progression = progression;
+    console.log(`[world-map] Arrived — tutorialComplete=${progression.tutorialComplete} bestStars=${JSON.stringify(progression.bestStars)}`);
   }
 
   // Populate level-start overlay from pending level node
@@ -638,11 +644,16 @@ function wireButtons() {
 
   // TITLE → INSTRUMENT_SELECT
   $('btn-start')?.addEventListener('click', () => {
+    // Initialise MIDI on first user gesture (required by browser security policy)
+    midiInput.start((note) => keyboardInput.dispatchNote(note)).catch(() => {});
     setScene(SCENE.INSTRUMENT_SELECT);
   });
 
   // TITLE → CALIBRATION (practice mode — Campfire level; still needs mic setup)
   $('btn-practice')?.addEventListener('click', async () => {
+  // TITLE → CALIBRATION (practice mode — Campfire level, bypasses menus)
+  $('btn-practice')?.addEventListener('click', () => {
+    midiInput.start((note) => keyboardInput.dispatchNote(note)).catch(() => {});
     state.currentLevel = LEVELS_BY_ID['campfire'];
     setScene(SCENE.CALIBRATION);
     startCapture(state).catch(() => {});
@@ -660,6 +671,12 @@ function wireButtons() {
     resumeAudioContext()
       .then(() => startGame())
       .catch(() => startGame());
+  // resumeAudioContext() is called here because this click IS a user gesture —
+  // the safest moment to lift a mobile AudioContext suspension before gameplay.
+  $('btn-calibration-done')?.addEventListener('click', () => {
+    resumeAudioContext()
+      .then(() => startGame())
+      .catch(() => startGame());   // start regardless if resume fails
   });
 
   // VICTORY / DEFEAT → PLAYING (replay same level)
@@ -684,6 +701,7 @@ function wireButtons() {
     const lvl = state.pendingLevel;
     if (!lvl || lvl.stub) return;
     state.currentLevel = lvl;
+    // All instruments use the mic as primary input — always calibrate first.
     setScene(SCENE.CALIBRATION);
     startCapture(state).catch(() => {});
   });
@@ -1497,6 +1515,13 @@ levelSelectUI.render(
   }
 );
 
+// Re-resume AudioContext on every canvas touch during gameplay.
+// Mobile browsers can re-suspend it mid-session (screen lock, phone call,
+// tab switch).  This passive listener costs nothing and self-heals silently.
+canvas.addEventListener('touchstart', () => {
+  if (state.scene === SCENE.PLAYING) resumeAudioContext();
+}, { passive: true });
+
 initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) => {
   if (state.scene !== SCENE.PLAYING) return;
   if (state.inputMode === mode) return;
@@ -1631,7 +1656,7 @@ initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) =
 function _applyWorldMapZoom(newZoom, cx, cy, immediate = false) {
   const cam     = state.worldMap;
   const oldZoom = cam.zoom;
-  newZoom       = Math.max(0.6, Math.min(1.4, newZoom));
+  newZoom       = Math.max(0.3, Math.min(1.4, newZoom));
   if (immediate) {
     // Adjust camera so the world point under cursor stays fixed
     cam.cameraX = cx - (cx - cam.cameraX) / oldZoom * newZoom;
@@ -1685,7 +1710,8 @@ function _handleWorldMapClick(x, y) {
   const nodeId = getNodeAtPoint(wx, wy, W, H, WORLD_MAP_NODES);
   if (nodeId) {
     const node = WORLD_MAP_NODES_BY_ID[nodeId];
-    if (node && !node.stub && isNodeUnlocked(node, progression)) {
+    // Allow selecting any unlocked node (including stubs — they show "Coming soon")
+    if (node && isNodeUnlocked(node, progression)) {
       state.worldMap.selectedNodeId = nodeId;
     }
   }

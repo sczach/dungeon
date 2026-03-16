@@ -71,8 +71,10 @@ export class Renderer {
     this._basePrevHp        = { player: -1 };
     this._baseDmgFlash      = { player: 0  };
     // Per-enemy-base flash tracking (indexed by position in state.enemyBases)
-    this._enemyBasePrevHp   = [];
-    this._enemyBaseDmgFlash = [];
+    this._enemyBasePrevHp    = [];
+    this._enemyBaseDmgFlash  = [];
+    // Destruction animation: performance.now() when each enemy base first hit 0 HP
+    this._enemyBaseDestroyTime = [];
     // World map renderer (lazy-created)
     this._worldMapRenderer  = null;
   }
@@ -234,9 +236,47 @@ export class Renderer {
     this._drawUiTint(state, W, H);
     this._drawModeAnnouncement(state, W, H);
     this._drawTutorialOverlay(state, W, H);
+    this._drawNoteDisplay(state, W, H);
     renderHUD(this.ctx, state, W, H);
 
     if (shaking) this.ctx.restore();
+  }
+
+  /**
+   * Guitar-Hero style: large centred note name shown for 1.0 s after any key press.
+   * Visible for 0.8 s at full opacity, then fades out over 0.2 s.
+   */
+  _drawNoteDisplay(state, W, H) {
+    const nd = state.noteDisplay;
+    if (!nd || !nd.note || !nd.startTime) return;
+    const elapsed = performance.now() - nd.startTime;
+    const TOTAL   = 1000; // ms
+    if (elapsed >= TOTAL) return;
+
+    const FADE_START = 800; // ms — begin fade-out at 0.8 s
+    const alpha = elapsed < FADE_START
+      ? 1.0
+      : 1.0 - (elapsed - FADE_START) / (TOTAL - FADE_START);
+
+    const ctx = this.ctx;
+    const x   = W / 2;
+    const y   = H * 0.30;  // upper-centre, clear of the combat lane
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Shadow halo for readability over any background
+    ctx.shadowBlur  = 24;
+    ctx.shadowColor = CLR.ACCENT;
+
+    // Large note name
+    ctx.font         = 'bold 72px Georgia, serif';
+    ctx.fillStyle    = CLR.ACCENT;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(nd.note, x, y);
+
+    ctx.restore();
   }
 
   /** Persistent tutorial hint banner drawn at the top of the PLAYING screen. */
@@ -520,7 +560,7 @@ export class Renderer {
       this._baseDmgFlash.player = now;
     }
     this._basePrevHp.player = state.playerBase.hp;
-    this._drawBase(state.playerBase, PLAYER_BASE_X * W, laneY - baseH / 2, baseW, baseH, '#7a4810', '#e8a030', false, this._baseDmgFlash.player);
+    this._drawBase(state.playerBase, PLAYER_BASE_X * W, laneY - baseH / 2, baseW, baseH, '#7a4810', '#e8a030', false, this._baseDmgFlash.player, 0);
 
     // ── Enemy bases (one or more) ──────────────────────────────────────────
     for (let i = 0; i < enemyBases.length; i++) {
@@ -532,20 +572,26 @@ export class Renderer {
       if (prevHp > 0 && b.hp < prevHp) {
         this._enemyBaseDmgFlash[i] = now;
       }
+      // Record the moment this base first hit 0 HP (triggers destruction animation)
+      if (b.hp <= 0 && prevHp > 0 && !this._enemyBaseDestroyTime[i]) {
+        this._enemyBaseDestroyTime[i] = now;
+      }
       this._enemyBasePrevHp[i] = b.hp;
 
       // Draw from (left-edge, top) computed from the base's own centre
       const drawX = b.x - baseW / 2;
       const drawY = b.y - baseH / 2;
-      this._drawBase(b, drawX, drawY, baseW, baseH, '#6a1010', '#ff4444', true, this._enemyBaseDmgFlash[i] ?? 0);
+      this._drawBase(b, drawX, drawY, baseW, baseH, '#6a1010', '#ff4444', true,
+        this._enemyBaseDmgFlash[i] ?? 0, this._enemyBaseDestroyTime[i] ?? 0);
     }
   }
 
   /**
-   * @param {boolean} isEnemy  — enemy base fills right-to-left, player left-to-right
-   * @param {number}  flashTime — performance.now() when damage was last taken (0 = none)
+   * @param {boolean} isEnemy     — enemy base fills right-to-left, player left-to-right
+   * @param {number}  flashTime   — performance.now() when damage was last taken (0 = none)
+   * @param {number}  destroyTime — performance.now() when base hit 0 HP (0 = none)
    */
-  _drawBase(base, x, y, w, h, dark, light, isEnemy, flashTime) {
+  _drawBase(base, x, y, w, h, dark, light, isEnemy, flashTime, destroyTime) {
     const ctx    = this.ctx;
     const hpFrac = base.hp / base.maxHp;
     ctx.save();
@@ -605,6 +651,36 @@ export class Renderer {
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText('\uD83D\uDEE1 Protected', x + w / 2, barY + barH + 4);
+    }
+
+    // ── Destruction animation ─────────────────────────────────────────────
+    // Flash white 3–4 times over 0.5 s, then dissolve (scale down + fade).
+    if (destroyTime > 0) {
+      const dt   = now - destroyTime;
+      const ANIM = 1200; // ms — total duration
+      if (dt < ANIM) {
+        // Phase 1 (0–500 ms): white strobe flash
+        const FLASH_DUR = 500;
+        if (dt < FLASH_DUR) {
+          const cycle = Math.sin((dt / FLASH_DUR) * Math.PI * 3.5); // ~3.5 flashes
+          const alpha = Math.max(0, cycle) * 0.85;
+          ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
+          ctx.fillRect(x, y, w, h);
+        }
+        // Phase 2 (300–1200 ms): dissolve — fade + scale down toward centre
+        if (dt > 300) {
+          const fadeT = (dt - 300) / (ANIM - 300); // 0 → 1
+          const scale = 1 - fadeT * 0.6;            // shrinks to 40%
+          const cx    = x + w / 2;
+          const cy    = y + h / 2;
+          const fw    = w * scale;
+          const fh    = h * scale;
+          ctx.globalAlpha = Math.max(0, 1 - fadeT) * 0.9;
+          ctx.fillStyle   = CLR.DANGER;
+          ctx.fillRect(cx - fw / 2, cy - fh / 2, fw, fh);
+          ctx.globalAlpha = 1;
+        }
+      }
     }
 
     ctx.restore();
