@@ -41,6 +41,7 @@ import { WORLD_MAP_NODES, WORLD_MAP_NODES_BY_ID, isNodeUnlocked } from './data/w
 import { getNodeAtPoint, getPlayButtonBounds, getResetViewButtonBounds } from './ui/worldMapRenderer.js';
 import { generateMelody, playMelody, stopMelody } from './audio/melodyEngine.js';
 import { applyLesson }                             from './data/lessons.js';
+import { wireSettingsUI }                           from './ui/screens.js';
 
 // Re-export SCENE for callers that import from game.js
 export { SCENE };
@@ -542,22 +543,16 @@ function setScene(scene) {
     const statusEl = document.getElementById('victory-melody-status');
     if (statusEl) statusEl.textContent = `🎵 ${melody.keyName} — your level's melody`;
 
-    // Gate the navigation buttons until melody finishes + 3 s pause
+    // Buttons are immediately active — melody plays in background without blocking
     const playAgainBtn = document.getElementById('btn-play-again-victory');
     const continueBtn  = document.getElementById('btn-title-victory');
-    if (playAgainBtn) playAgainBtn.disabled = true;
-    if (continueBtn)  continueBtn.disabled  = true;
+    if (playAgainBtn) playAgainBtn.disabled = false;
+    if (continueBtn)  continueBtn.disabled  = false;
 
     playMelody(melody).then(() => {
-      if (statusEl) statusEl.textContent = '✓ Ready — continue when you are';
-      setTimeout(() => {
-        if (playAgainBtn) playAgainBtn.disabled = false;
-        if (continueBtn)  continueBtn.disabled  = false;
-      }, 3000);
+      if (statusEl) statusEl.textContent = '✓ Melody complete — continue when you are';
     }).catch(() => {
-      // Web Audio unavailable — unlock buttons immediately
-      if (playAgainBtn) playAgainBtn.disabled = false;
-      if (continueBtn)  continueBtn.disabled  = false;
+      if (statusEl) statusEl.textContent = '✓ Ready — continue when you are';
     });
   }
 
@@ -1372,6 +1367,8 @@ document.addEventListener('visibilitychange', () => {
 setScene(SCENE.TITLE);
 wireButtons();
 settingsUI.render(state);
+wireSettingsUI(state, () => setScene(SCENE.INSTRUMENT_SELECT));
+console.log('[settings] wired');
 
 // InstrumentSelectUI: render once; callback saves choice + advances to LEVEL_START or WORLD_MAP.
 instrumentSelectUI.render(
