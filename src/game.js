@@ -40,6 +40,12 @@ import { LEVELS, LEVELS_BY_ID, computeStars } from './data/levels.js';
 import { WORLD_MAP_NODES, WORLD_MAP_NODES_BY_ID, isNodeUnlocked } from './data/worldMap.js';
 import { getNodeAtPoint, getPlayButtonBounds, getResetViewButtonBounds } from './ui/worldMapRenderer.js';
 import { generateMelody, playMelody, stopMelody } from './audio/melodyEngine.js';
+import {
+  startSoundEngine,
+  stopSoundEngine,
+  syncSoundEngine,
+  onGameEvent,
+} from './audio/soundEngine.js';
 import { applyLesson }                             from './data/lessons.js';
 import { wireSettingsUI }                           from './ui/screens.js';
 
@@ -286,6 +292,12 @@ const state    = createInitialState();
 // Progression is loaded once; mutations are written back to localStorage via saveProgress()
 let progression = loadProgress();
 
+// ── Sound engine change-detection sentinels (no per-frame allocation) ────────
+/** Previous player base HP — detects damage taken. */
+let _prevPlayerHp = Infinity;
+/** Previous modeAnnounce timestamp — detects mode switch. */
+let _prevModeAnnounce = 0;
+
 const settingsUI           = new SettingsUI();
 const levelSelectUI        = new LevelSelectUI();
 const instrumentSelectUI   = new InstrumentSelectUI();
@@ -433,9 +445,10 @@ function _handleVictory() {
 
 /** Apply scene change, update <body> data attribute, and clean up subsystems. */
 function setScene(scene) {
-  // Stop keyboard when leaving PLAYING so pressed-key state doesn't bleed
+  // Stop keyboard and sound engine when leaving PLAYING so state doesn't bleed
   if (state.scene === SCENE.PLAYING && scene !== SCENE.PLAYING) {
     keyboardInput.stop();
+    stopSoundEngine();
   }
   state.scene = scene;
   document.body.dataset.scene = scene;
@@ -790,8 +803,13 @@ function startGame(levelConfig) {
     }
   }
 
+  // Reset sound-engine sentinels for clean change-detection in this run
+  _prevPlayerHp     = Infinity;
+  _prevModeAnnounce = 0;
+
   keyboardInput.start(state, tablatureSystem, attackSequenceSystem, cueSystem);
   setScene(SCENE.PLAYING);
+  startSoundEngine(state);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -994,6 +1012,7 @@ function spawnPlayerUnit(tier, free = false, unitType = null) {
   if (unitType) unit.unitType = unitType;
 
   state.units.push(unit);
+  onGameEvent('spawn');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1039,6 +1058,18 @@ function update(dt) {
 
       // Audio pipeline (mic chord detection / audio analysis)
       updateAudio(state, dt);
+
+      // Sound engine — sync BPM/bass from state; detect damage + mode change
+      syncSoundEngine(state);
+      if (state.playerBase) {
+        const curHp = state.playerBase.hp;
+        if (curHp < _prevPlayerHp) onGameEvent('damage');
+        _prevPlayerHp = curHp;
+      }
+      if (state.modeAnnounce !== _prevModeAnnounce) {
+        _prevModeAnnounce = state.modeAnnounce;
+        onGameEvent('modeSwitch');
+      }
 
       // ── Subsystem updates (tablature only active in summon mode) ─────────
       if (state.inputMode === 'summon') tablatureSystem.update(dt, state);
@@ -1248,6 +1279,8 @@ function update(dt) {
               state.comboBonusTime = performance.now();
               console.log(`[combo] milestone ${state.combo} → +${bonus} bonus resources`);
             }
+            // Kill event sound
+            onGameEvent('kill');
             // Kill melody — throttled to ≤ 1 per 800 ms
             const now = performance.now();
             if (u.attackSeq && u.attackSeq.length > 0 &&
