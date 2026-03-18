@@ -233,43 +233,18 @@ export function updateCalibration(state) {
  * @param {number} dt    — delta-time in seconds (unused here; reserved for
  *                         future time-weighted smoothing)
  */
-/**
- * Resume a suspended AudioContext.
- * Call from a user-gesture handler (button click / touchstart) so the
- * browser allows the resume.  Safe to call at any time — no-ops when
- * the context is already running or when capture hasn't started.
- *
- * @returns {Promise<void>}
- */
-export function resumeAudioContext() {
-  if (_audioCtx?.state === 'suspended') {
-    return _audioCtx.resume().catch(err =>
-      console.warn('[audio] resume failed:', err)
-    );
-  }
-  return Promise.resolve();
-}
-
 export function updateAudio(state, dt) {   // eslint-disable-line no-unused-vars
   // Always write ctxState so the debug overlay can read it even when returning early
   state.audio.ctxState = _audioCtx?.state ?? 'none';
 
   if (!_analyser || !state.audio.ready) return;
 
-  // If suspended (e.g. mobile tab-switch), attempt a silent resume each frame.
-  // The resume() call is async — we skip this frame's analysis but try again
-  // next frame so recovery is automatic without requiring another user gesture.
+  // Attempt a silent resume if suspended — do NOT return; the analyser
+  // retains its last buffer so we can still read data this frame and
+  // recovery happens automatically without requiring another user gesture.
   if (_audioCtx?.state === 'suspended') {
     _audioCtx.resume().catch(() => {});
-    return;
-  // Mobile browsers suspend AudioContext between gestures.  Kick a resume
-  // attempt every frame while suspended — it will succeed as soon as the
-  // next user gesture lands (or immediately if the policy allows it).
-  if (_audioCtx?.state === 'suspended') {
-    _audioCtx.resume().catch(() => {});
-    return;   // skip this frame; next frame the state will be 'running'
   }
-  if (_audioCtx?.state !== 'running') return;
 
   // ── 1. Time domain snapshot ───────────────────────────────────────────────
   const { timeDomain, rms } = readTimeDomain(_analyser);
@@ -277,7 +252,10 @@ export function updateAudio(state, dt) {   // eslint-disable-line no-unused-vars
   state.audio.rms           = rms;  // expose for debug overlay
 
   // ── 2. Noise gate ─────────────────────────────────────────────────────────
-  const live = isAboveNoiseGate(rms, state.audio.noiseFloor, _gateState);
+  // Clamp floor to 0.001 so a zero-calibration run doesn't block all input.
+  // Multiplier reduced to 1.2 (from 1.5) so quiet piano notes pass the gate.
+  const effectiveFloor = Math.max(state.audio.noiseFloor, 0.001);
+  const live = isAboveNoiseGate(rms, effectiveFloor, _gateState, 1.2);
 
   if (!live) {
     // Signal below noise floor — decay confidence and clear stale detections
@@ -306,6 +284,16 @@ export function updateAudio(state, dt) {   // eslint-disable-line no-unused-vars
     _stableNoteFrames = state.audio.detectedNote !== null ? 1 : 0;
   }
   state.audio.pitchStable = (_stableNoteFrames >= STABLE_FRAMES);
+
+  // ── 3c. Piano bridge — stable pitch → detectedChord ───────────────────────
+  // Single piano notes never reach cosine-similarity chord-match confidence
+  // (chord templates expect multiple simultaneous harmonics).  When a pitch
+  // is stable, write the note name directly to detectedChord so downstream
+  // systems and the debug overlay always see a signal for piano input.
+  if (state.audio.detectedNote && state.audio.pitchStable) {
+    state.audio.detectedChord = state.audio.detectedNote;
+    state.audio.confidence    = 0.85;
+  }
 
   // ── 4. Chord matching (chromagram) ────────────────────────────────────────
   const freqData = readFrequencyDomain(_analyser);

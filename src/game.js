@@ -649,8 +649,6 @@ function wireButtons() {
     setScene(SCENE.INSTRUMENT_SELECT);
   });
 
-  // TITLE → CALIBRATION (practice mode — Campfire level; still needs mic setup)
-  $('btn-practice')?.addEventListener('click', async () => {
   // TITLE → CALIBRATION (practice mode — Campfire level, bypasses menus)
   $('btn-practice')?.addEventListener('click', () => {
     midiInput.start((note) => keyboardInput.dispatchNote(note)).catch(() => {});
@@ -665,14 +663,8 @@ function wireButtons() {
   });
 
   // CALIBRATION → PLAYING
-  // resumeAudioContext() ensures the AudioContext is running before gameplay begins.
-  // On mobile, it may still be suspended even after getUserMedia succeeds.
-  $('btn-calibration-done')?.addEventListener('click', () => {
-    resumeAudioContext()
-      .then(() => startGame())
-      .catch(() => startGame());
-  // resumeAudioContext() is called here because this click IS a user gesture —
-  // the safest moment to lift a mobile AudioContext suspension before gameplay.
+  // This click IS a user gesture — the safest moment to lift a mobile
+  // AudioContext suspension before gameplay begins.
   $('btn-calibration-done')?.addEventListener('click', () => {
     resumeAudioContext()
       .then(() => startGame())

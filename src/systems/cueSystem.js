@@ -41,13 +41,21 @@ const NOTE_TO_KEY = {
 
 /** Cue repeats every N beats. */
 const CUE_INTERVAL_BEATS = 4;
-/** Player has N beats to hit the cue. */
+/** Player has N beats to hit the cue (at the current BPM). */
 const CUE_WINDOW_BEATS   = 2;
 /** How long to show resolved (hit/missed) cue before clearing it (ms). */
 const CUE_CLEAR_DELAY_MS = 700;
 
+/**
+ * Per-difficulty multiplier applied to the cue hit window.
+ * Easy players get 2.5× more time; Hard players get the raw 2-beat window.
+ */
+const CUE_WINDOW_DIFFICULTY = Object.freeze({ easy: 2.5, medium: 1.5, hard: 1.0 });
+
 /** Resource award on a successful cue hit. */
 const CUE_HIT_REWARD     = 10;
+/** Score award on a successful cue hit (ensures non-zero victory score). */
+const CUE_HIT_SCORE      = 10;
 /** Resource award for any note press when no active cue exists. */
 const FREE_PLAY_REWARD   = 3;
 /** Resource cap (same as game.js). */
@@ -88,6 +96,10 @@ export class CueSystem {
       // Expire active cue that wasn't hit in time
       if (cue.status === 'active' && now > cue.deadline) {
         cue.status = 'missed';
+        // FIX C: record the miss so noteAccuracy reflects real performance
+        if (state.tablature) {
+          state.tablature.totalMisses = (state.tablature.totalMisses || 0) + 1;
+        }
         console.log(`[cue] missed: ${cue.note}`);
       }
       // Clear resolved cues after showing briefly
@@ -98,16 +110,20 @@ export class CueSystem {
 
     // Generate the next cue when interval has elapsed and no active cue is showing
     if (!state.currentCue && now >= this._nextCueTime) {
-      const note       = CUE_NOTE_POOL[Math.floor(Math.random() * CUE_NOTE_POOL.length)];
-      const window     = this._beatMs * CUE_WINDOW_BEATS;
+      // FIX A: scale hit window by difficulty — Easy players get far more time
+      const diffMult = CUE_WINDOW_DIFFICULTY[state.difficulty] ?? 1.0;
+      const windowMs = this._beatMs * CUE_WINDOW_BEATS * diffMult;
+      // Task 3: use per-level note pool if defined, otherwise fall back to full pool
+      const pool = state.currentLevel?.cueNotePool ?? CUE_NOTE_POOL;
+      const note = pool[Math.floor(Math.random() * pool.length)];
       state.currentCue = {
         note,
         startTime: now,
-        deadline:  now + window,
+        deadline:  now + windowMs,
         status:    'active',
       };
       this._nextCueTime = now + this._beatMs * CUE_INTERVAL_BEATS;
-      console.log(`[cue] new: ${note} (${NOTE_TO_KEY[note] ?? note}) window=${window.toFixed(0)}ms`);
+      console.log(`[cue] new: ${note} (${NOTE_TO_KEY[note] ?? note}) window=${windowMs.toFixed(0)}ms diff=${state.difficulty}`);
     }
   }
 
@@ -126,9 +142,11 @@ export class CueSystem {
         // ── Cue hit ──────────────────────────────────────────────────────
         cue.status       = 'hit';
         state.resources  = Math.min(RESOURCE_CAP, (state.resources || 0) + CUE_HIT_REWARD);
+        // FIX B: award score so victory screen shows a non-zero value
+        state.score      = Math.min(99999, (state.score || 0) + CUE_HIT_SCORE);
         // Schedule next cue sooner (reward flows better after a hit)
         this._nextCueTime = now + this._beatMs * CUE_INTERVAL_BEATS * 0.75;
-        console.log(`[cue] HIT ${note} → +${CUE_HIT_REWARD} resources`);
+        console.log(`[cue] HIT ${note} → +${CUE_HIT_REWARD} resources +${CUE_HIT_SCORE} score`);
         return;
       }
       // Active cue exists but wrong note — no reward, no penalty

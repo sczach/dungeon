@@ -1460,10 +1460,13 @@ export class Renderer {
     const cue = state.currentCue;
     if (!cue) return;
 
-    const ctx     = this.ctx;
-    const now     = performance.now();
-    const CARD_W  = 130;
-    const CARD_H  = 64;
+    const ctx    = this.ctx;
+    const now    = performance.now();
+
+    // Task 2: double the card on narrow (mobile) screens
+    const mobile  = W < 500;
+    const CARD_W  = mobile ? 200 : 130;
+    const CARD_H  = mobile ? 96  : 64;
     const CARD_X  = W - CARD_W - 14;
     const CARD_Y  = 44;  // below the phase label line
 
@@ -1497,7 +1500,7 @@ export class Renderer {
                     : cue.status === 'hit'    ? '#44ff88'
                     : cue.status === 'missed' ? '#ff5544'
                     : CLR.ACCENT;
-    ctx.lineWidth   = 2;
+    ctx.lineWidth   = mobile ? 3 : 2;
     ctx.beginPath();
     ctx.roundRect?.(CARD_X, CARD_Y, CARD_W, CARD_H, 8) ??
       ctx.rect(CARD_X, CARD_Y, CARD_W, CARD_H);
@@ -1506,14 +1509,14 @@ export class Renderer {
 
     // Header label — changes to "✗ Wrong note" during red flash
     ctx.fillStyle    = wrongFlash ? '#ff8888' : 'rgba(240,234,214,0.6)';
-    ctx.font         = '11px Georgia, serif';
+    ctx.font         = `${mobile ? 14 : 11}px Georgia, serif`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(wrongFlash ? '✗ Wrong note' : '♪ Play', CARD_X + CARD_W / 2, CARD_Y + 6);
 
-    // Note name — large
+    // Note name — 2× larger on mobile
     ctx.fillStyle    = cue.status === 'hit' ? '#88ffaa' : CLR.TEXT;
-    ctx.font         = `bold 22px Georgia, serif`;
+    ctx.font         = `bold ${mobile ? 44 : 22}px Georgia, serif`;
     ctx.textBaseline = 'middle';
     ctx.fillText(cue.note, CARD_X + CARD_W * 0.42, CARD_Y + CARD_H * 0.52);
 
@@ -1523,23 +1526,23 @@ export class Renderer {
       'G3': ';', 'A3': "'", 'B3': '↵',
     };
     const keyLabel = NOTE_TO_KEY_MAP[cue.note] ?? '?';
-    ctx.font         = 'bold 16px Georgia, serif';
+    ctx.font         = `bold ${mobile ? 22 : 16}px Georgia, serif`;
     ctx.fillStyle    = CLR.ACCENT;
     ctx.textAlign    = 'center';
     ctx.fillText(`[${keyLabel}]`, CARD_X + CARD_W * 0.78, CARD_Y + CARD_H * 0.52);
 
     // Status / result text
     if (cue.status === 'hit') {
-      ctx.font      = 'bold 11px Georgia, serif';
+      ctx.font      = `bold ${mobile ? 14 : 11}px Georgia, serif`;
       ctx.fillStyle = '#44ff88';
       ctx.fillText('+10', CARD_X + CARD_W / 2, CARD_Y + CARD_H - 9);
     } else if (cue.status === 'missed') {
-      ctx.font      = '11px Georgia, serif';
+      ctx.font      = `${mobile ? 14 : 11}px Georgia, serif`;
       ctx.fillStyle = '#ff8888';
       ctx.fillText('missed', CARD_X + CARD_W / 2, CARD_Y + CARD_H - 9);
     } else {
-      // Timing bar — shrinks as deadline approaches
-      const BAR_H   = 5;
+      // Timing bar — thicker on mobile for better visibility
+      const BAR_H   = mobile ? 9 : 5;
       const BAR_Y   = CARD_Y + CARD_H - BAR_H - 4;
       const BAR_PAD = 8;
       const maxW    = CARD_W - BAR_PAD * 2;

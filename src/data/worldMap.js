@@ -258,6 +258,49 @@ const HUB_NODE = Object.freeze({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Story levels — first real battles after the tutorial spine
+// These use the full level configs from levels.js and are placed just off the hub.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CAMPFIRE_NODE = Object.freeze({
+  ...LEVELS_BY_ID['campfire'],
+  // Override world-map–specific fields
+  region:            'tutorial',      // sits in the tutorial colour family
+  isTutorial:        false,
+  isHub:             false,
+  isEntryNode:       true,            // larger dot on the map
+  stub:              false,
+  unlockRequires:    ['tutorial-4'],  // unlocks as soon as T4 is beaten
+  levelGoal:         'Put your training to the test — destroy the enemy camp',
+  skillFocus:        'Apply everything from the tutorial against real opposition',
+  mechanicBadge:     null,
+  estimatedDuration: '~3 minutes',
+  winCondition:      'base',
+  chargeUnlocksBase: false,
+  tutorialOverlay:   null,
+  allowedModes:      null,
+});
+
+const CROSSING_NODE = Object.freeze({
+  ...LEVELS_BY_ID['crossing'],
+  // Override world-map–specific fields
+  region:            'tutorial',
+  isTutorial:        false,
+  isHub:             false,
+  isEntryNode:       false,
+  stub:              false,
+  unlockRequires:    ['campfire'],    // unlocks after beating Level 1
+  levelGoal:         'Hold the bridge and defeat both enemy bases',
+  skillFocus:        'Manage two-lane combat — a D note is introduced in cues',
+  mechanicBadge:     'NEW: Two Bases',
+  estimatedDuration: '~4 minutes',
+  winCondition:      'base',
+  chargeUnlocksBase: false,
+  tutorialOverlay:   null,
+  allowedModes:      null,
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Stub node factory
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -497,7 +540,12 @@ export const WORLD_MAP_NODES = Object.freeze([
 
   // ── Hub — the crossroads (map center) ──────────────────────────────────────
   Object.freeze({ ...HUB_NODE, x: 1200, y: 960,
-    connections: ['tutorial-4', 'tone-1', 'rhythm-1', 'theory-1', 'music-1'] }),
+    connections: ['tutorial-4', 'campfire', 'tone-1', 'rhythm-1', 'theory-1', 'music-1'] }),
+
+  // ── Story levels — first real battles after tutorial ──────────────────────
+  // Campfire sits just off the hub (lower-right); Crossing chains from it.
+  Object.freeze({ ...CAMPFIRE_NODE, x: 1420, y: 1080, connections: ['hub', 'crossing'] }),
+  Object.freeze({ ...CROSSING_NODE, x: 1640,  y:  980, connections: ['campfire'] }),
 
   // ── Region 1: Tone & Technique (left branch, blue) ─────────────────────────
   Object.freeze({ ...TONE_1,   x:  820, y:  880, connections: ['hub',    'tone-2'] }),

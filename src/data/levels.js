@@ -54,6 +54,8 @@ export const LEVELS = Object.freeze([
     unlockRequires: null,   // always available
     starThresholds: [0, 65, 85],  // 1★: any win; 2★: ≥65% accuracy; 3★: ≥85%
     bpm:            110,          // tempo for cue system
+    // Level 1 teaches two notes only — C3 and G3 (a perfect fifth, musically intuitive)
+    cueNotePool:    Object.freeze(['C3', 'G3']),
     enemyBases: Object.freeze([
       Object.freeze({ x: 0.88, y: 0.50 }),   // single base — lane centre
     ]),
@@ -76,6 +78,8 @@ export const LEVELS = Object.freeze([
     unlockRequires: 'campfire',
     starThresholds: [0, 70, 90],  // 1★: any win; 2★: ≥70% accuracy; 3★: ≥90%
     bpm:            120,
+    // Level 2 introduces D3 — adds a neighbour note to the C/G foundation
+    cueNotePool:    Object.freeze(['C3', 'D3', 'G3']),
     enemyBases: Object.freeze([
       Object.freeze({ x: 0.88, y: 0.33 }),   // upper base
       Object.freeze({ x: 0.88, y: 0.67 }),   // lower base
