@@ -49,6 +49,7 @@ import {
 } from './audio/soundEngine.js';
 import { applyLesson }                             from './data/lessons.js';
 import { wireSettingsUI }                           from './ui/screens.js';
+import { minigameEngine }                          from './systems/minigameEngine.js';
 
 // Re-export SCENE for callers that import from game.js
 export { SCENE };
@@ -458,6 +459,32 @@ function _handleVictory() {
   setScene(SCENE.VICTORY);
 }
 
+/**
+ * Handle result from a minigame handler's done() callback.
+ * Routes to VICTORY or DEFEAT, persists stars like the tower-defense path.
+ * @param {import('./systems/minigameEngine.js').MinigameResult} result
+ */
+function _handleMinigameResult(result) {
+  const level = state.currentLevel;
+
+  state.noteAccuracy = result.accuracyPct ?? 0;
+  state.score        = result.score       ?? 0;
+  state.starsEarned  = result.stars       ?? 0;
+
+  if (level && result.passed) {
+    progression = awardStars(level.id, state.starsEarned, progression);
+    saveProgress(progression);
+    state._progression = progression;
+    console.log(`[minigame] victory ${state.starsEarned}★ acc=${state.noteAccuracy}% level=${level.id}`);
+  }
+
+  if (level?.id) {
+    state.worldMap.lastPlayedNodeId = level.id;
+  }
+
+  setScene(result.passed ? SCENE.VICTORY : SCENE.DEFEAT);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Scene management
 // ─────────────────────────────────────────────────────────────────────────────
@@ -468,6 +495,10 @@ function setScene(scene) {
   if (state.scene === SCENE.PLAYING && scene !== SCENE.PLAYING) {
     keyboardInput.stop();
     stopSoundEngine();
+  }
+  // Tear down active minigame when leaving MINIGAME scene
+  if (state.scene === SCENE.MINIGAME && scene !== SCENE.MINIGAME) {
+    minigameEngine.stop();
   }
   state.scene = scene;
   document.body.dataset.scene = scene;
@@ -693,9 +724,26 @@ function wireButtons() {
     const lvl = state.pendingLevel;
     if (!lvl || lvl.stub) return;
     state.currentLevel = lvl;
-    // All instruments use the mic as primary input — always calibrate first.
-    setScene(SCENE.CALIBRATION);
-    startCapture(state).catch(() => {});
+
+    const gameType = lvl.gameType ?? 'tower-defense';
+
+    // Tower-defense levels use the existing startGame() path (with calibration)
+    if (gameType === 'tower-defense') {
+      setScene(SCENE.CALIBRATION);
+      startCapture(state).catch(() => {});
+      return;
+    }
+
+    // Minigame types — launch through the minigame engine
+    setScene(SCENE.MINIGAME);
+    minigameEngine.launch(lvl, {
+      canvas,
+      ctx,
+      state,
+      difficulty: state.difficulty,
+      onNote:     (note) => keyboardInput.dispatchNote(note),
+      onComplete: _handleMinigameResult,
+    });
   });
 
   // LEVEL_START: ← Map button
@@ -1422,6 +1470,10 @@ function update(dt) {
       }
       break;
     }
+
+    case SCENE.MINIGAME:
+      // Minigame engine owns its own update/render loop — nothing to do here
+      break;
 
     case SCENE.VICTORY:
     case SCENE.DEFEAT:
