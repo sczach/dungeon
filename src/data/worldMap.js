@@ -591,18 +591,69 @@ const TONE_6 = Object.freeze({
 // Reference: Essential Elements, Rhythm Guitar Complete, drum methods
 // ─────────────────────────────────────────────────────────────────────────────
 
-const RHYTHM_1 = makeStub(
-  'rhythm-1', 'Quarter Notes', '♩', 'rhythm', ['hub'],
-  'Stay locked to a steady quarter-note pulse through the entire song',
-  'Feel and play the basic beat unit — one note per beat at a consistent tempo',
-  true   // isEntryNode
-);
+// rhythm-1: Metronome Mastery — tap in time with a metronome across four BPM phases.
+const RHYTHM_1 = Object.freeze({
+  id:                'rhythm-1',
+  name:              'Quarter Notes',
+  subtitle:          'Find the beat',
+  icon:              '♩',
+  region:            'rhythm',
+  gameType:          'metronome-mastery',
+  isTutorial:        false,
+  isHub:             false,
+  isEntryNode:       true,
+  stub:              false,
+  maxWaves:          1,
+  difficultyMod:     1.0,
+  spawnMod:          1.0,
+  startResources:    0,
+  maxEnemyCap:       0,
+  allowedModes:      null,
+  winCondition:      'base',
+  chargeUnlocksBase: false,
+  tutorialOverlay:   null,
+  bpm:               80,
+  starThresholds:    [0, 65, 85],
+  unlockRequires:    ['hub'],
+  levelGoal:         'Stay locked to a steady quarter-note pulse through the entire song',
+  skillFocus:        'Feel and play the basic beat unit — one note per beat at a consistent tempo',
+  mechanicBadge:     'NEW: Minigame',
+  estimatedDuration: '~1 minute',
+  enemyBases: Object.freeze([Object.freeze({ x: 0.88, y: 0.50 })]),
+  phases:     Object.freeze([Object.freeze({ label: 'Rhythm', duration: null })]),
+});
 
-const RHYTHM_2 = makeStub(
-  'rhythm-2', 'The Downbeat', '🥁', 'rhythm', ['rhythm-1'],
-  'Land beat 1 with confidence and feel the weight of the measure',
-  'Understand how meter organizes time by emphasizing the first beat'
-);
+// rhythm-2: Metronome Mastery (harder) — same minigame, unlocks after rhythm-1.
+const RHYTHM_2 = Object.freeze({
+  id:                'rhythm-2',
+  name:              'The Downbeat',
+  subtitle:          'Feel the weight',
+  icon:              '🥁',
+  region:            'rhythm',
+  gameType:          'metronome-mastery',
+  isTutorial:        false,
+  isHub:             false,
+  isEntryNode:       false,
+  stub:              false,
+  maxWaves:          1,
+  difficultyMod:     1.0,
+  spawnMod:          1.0,
+  startResources:    0,
+  maxEnemyCap:       0,
+  allowedModes:      null,
+  winCondition:      'base',
+  chargeUnlocksBase: false,
+  tutorialOverlay:   null,
+  bpm:               95,
+  starThresholds:    [0, 70, 88],
+  unlockRequires:    ['rhythm-1'],
+  levelGoal:         'Land beat 1 with confidence and feel the weight of the measure',
+  skillFocus:        'Understand how meter organizes time by emphasizing the first beat',
+  mechanicBadge:     null,
+  estimatedDuration: '~1 minute',
+  enemyBases: Object.freeze([Object.freeze({ x: 0.88, y: 0.50 })]),
+  phases:     Object.freeze([Object.freeze({ label: 'Rhythm', duration: null })]),
+});
 
 const RHYTHM_3 = makeStub(
   'rhythm-3', 'Half & Whole', '𝅗𝅥', 'rhythm', ['rhythm-2'],
