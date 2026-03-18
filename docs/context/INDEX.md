@@ -10,6 +10,8 @@
 | Bug fix in gameplay | [[GAME_SYSTEMS]], [[STATE]] |
 | UI/rendering work | [[RENDERING]], [[STATE]] |
 | New level or content | [[DATA_MODELS]], [[GAME_SYSTEMS]] |
+| **New minigame** | **[[MINIGAME_ENGINE]]** |
+| **Minigame balancing** | **[[MINIGAME_ENGINE]], [[DATA_MODELS]]** |
 | Input handling | [[INPUT_SYSTEM]], [[STATE]] |
 | Architecture decisions | [[ARCHITECTURE]], [[DECISIONS]] |
 | First time on project | [[ARCHITECTURE]], [[SETUP]] |
@@ -27,6 +29,7 @@
 - **[[INPUT_SYSTEM]]** — Keyboard mapping, MIDI, touch/click piano, mode cycling, charge mechanic
 - **[[RENDERING]]** — Renderer architecture, HUD, world map, per-scene draw methods, visual constants
 - **[[GAME_SYSTEMS]]** — Combat, waves, tablature, attack sequences, progression, cue system
+- **[[MINIGAME_ENGINE]]** — Minigame registry, BaseMinigame contract, existing minigames, build guide
 
 ### Data & Config
 - **[[DATA_MODELS]]** — Levels, world map nodes, skills, lessons, chord data
