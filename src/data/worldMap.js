@@ -350,45 +350,232 @@ function makeStub(id, name, icon, region, unlockRequires, levelGoal, skillFocus,
 // ─────────────────────────────────────────────────────────────────────────────
 // Region 1 — TONE & TECHNIQUE  (left branch, blue)
 // Focus: physical instrument skill — clean, accurate note production
-// Reference: Hal Leonard, Suzuki Method, Alfred's Basic
+// Musical arc: C only → C+D (step) → C+E+G (skip) → 4 notes → 5 notes → full scale
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TONE_1 = makeStub(
-  'tone-1', 'Open Strings', '🎸', 'tone', ['hub'],
-  'Play each open string cleanly and hold it steady for its full duration',
-  'Learn to produce clean, accurate individual notes without buzzing or muting',
-  true   // isEntryNode
-);
+// tone-1: One note only — C3. The simplest possible cue. Just play one key cleanly.
+const TONE_1 = Object.freeze({
+  id:                'tone-1',
+  name:              'Open Strings',
+  subtitle:          'One note, played clean',
+  icon:              '🎸',
+  region:            'tone',
+  isTutorial:        false,
+  isHub:             false,
+  isEntryNode:       true,
+  stub:              false,
+  maxWaves:          5,
+  difficultyMod:     0.60,   // very soft — intro to the region
+  spawnMod:          1.50,   // slow spawns, plenty of time to breathe
+  startResources:    300,
+  maxEnemyCap:       10,
+  allowedModes:      null,
+  winCondition:      'base',
+  chargeUnlocksBase: false,
+  tutorialOverlay:   null,
+  bpm:               90,     // slow tempo = generous cue windows
+  cueNotePool:       Object.freeze(['C3']),
+  starThresholds:    [0, 50, 70],
+  unlockRequires:    ['hub'],
+  levelGoal:         'Play C cleanly, every time the cue appears',
+  skillFocus:        'Produce one note accurately and consistently under light enemy pressure',
+  mechanicBadge:     null,
+  estimatedDuration: '~3 minutes',
+  enemyBases: Object.freeze([Object.freeze({ x: 0.88, y: 0.50 })]),
+  phases: Object.freeze([
+    Object.freeze({ label: 'First Notes',  duration: 60   }),
+    Object.freeze({ label: 'Hold Steady',  duration: null }),
+  ]),
+});
 
-const TONE_2 = makeStub(
-  'tone-2', 'First Position', '🖐', 'tone', ['tone-1'],
-  'Move smoothly between adjacent notes using the correct finger placement',
-  'Practice smooth stepwise transitions between neighboring pitches'
-);
+// tone-2: Add D3 — the neighbour a step above C. Now you need to move one key.
+const TONE_2 = Object.freeze({
+  id:                'tone-2',
+  name:              'First Position',
+  subtitle:          'Two neighbours',
+  icon:              '🖐',
+  region:            'tone',
+  isTutorial:        false,
+  isHub:             false,
+  isEntryNode:       false,
+  stub:              false,
+  maxWaves:          6,
+  difficultyMod:     0.70,
+  spawnMod:          1.35,
+  startResources:    270,
+  maxEnemyCap:       10,
+  allowedModes:      null,
+  winCondition:      'base',
+  chargeUnlocksBase: false,
+  tutorialOverlay:   null,
+  bpm:               95,
+  cueNotePool:       Object.freeze(['C3', 'D3']),
+  starThresholds:    [0, 55, 75],
+  unlockRequires:    ['tone-1'],
+  levelGoal:         'Distinguish C and D — step quickly between neighbours',
+  skillFocus:        'React to two adjacent cue notes and build stepwise note memory',
+  mechanicBadge:     null,
+  estimatedDuration: '~3 minutes',
+  enemyBases: Object.freeze([Object.freeze({ x: 0.88, y: 0.50 })]),
+  phases: Object.freeze([
+    Object.freeze({ label: 'Two Keys',     duration: 60   }),
+    Object.freeze({ label: 'Pick Up Pace', duration: null }),
+  ]),
+});
 
-const TONE_3 = makeStub(
-  'tone-3', 'The Clean Shift', '↕', 'tone', ['tone-2'],
-  'Jump across larger intervals without losing intonation or tone quality',
-  'Master leaping to distant notes cleanly under rhythmic pressure'
-);
+// tone-3: Introduce a skip — C, E, G form a major triad spread. Bigger reach required.
+const TONE_3 = Object.freeze({
+  id:                'tone-3',
+  name:              'The Clean Shift',
+  subtitle:          'Reach further',
+  icon:              '↕',
+  region:            'tone',
+  isTutorial:        false,
+  isHub:             false,
+  isEntryNode:       false,
+  stub:              false,
+  maxWaves:          7,
+  difficultyMod:     0.85,
+  spawnMod:          1.20,
+  startResources:    240,
+  maxEnemyCap:       12,
+  allowedModes:      null,
+  winCondition:      'base',
+  chargeUnlocksBase: false,
+  tutorialOverlay:   null,
+  bpm:               100,
+  cueNotePool:       Object.freeze(['C3', 'E3', 'G3']),
+  starThresholds:    [0, 60, 78],
+  unlockRequires:    ['tone-2'],
+  levelGoal:         'Jump cleanly between C, E, and G — a spread you cannot step through',
+  skillFocus:        'Practice skipping over notes to land accurately on a distant key',
+  mechanicBadge:     null,
+  estimatedDuration: '~4 minutes',
+  enemyBases: Object.freeze([Object.freeze({ x: 0.88, y: 0.50 })]),
+  phases: Object.freeze([
+    Object.freeze({ label: 'The Jump',    duration: 50   }),
+    Object.freeze({ label: 'Development', duration: 80   }),
+    Object.freeze({ label: 'Climax',      duration: null }),
+  ]),
+});
 
-const TONE_4 = makeStub(
-  'tone-4', 'Hammer & Pull', '🔨', 'tone', ['tone-3'],
-  'Connect notes into a smooth legato line without re-attacking each one',
-  'Play slurred notes by hammering on and pulling off rather than restroking'
-);
+// tone-4: Four notes — C, D, E, G. Mixes step and skip. The note choice is now unpredictable.
+const TONE_4 = Object.freeze({
+  id:                'tone-4',
+  name:              'Hammer & Pull',
+  subtitle:          'Mix it up',
+  icon:              '🔨',
+  region:            'tone',
+  isTutorial:        false,
+  isHub:             false,
+  isEntryNode:       false,
+  stub:              false,
+  maxWaves:          8,
+  difficultyMod:     1.00,
+  spawnMod:          1.10,
+  startResources:    210,
+  maxEnemyCap:       12,
+  allowedModes:      null,
+  winCondition:      'base',
+  chargeUnlocksBase: false,
+  tutorialOverlay:   null,
+  bpm:               108,
+  cueNotePool:       Object.freeze(['C3', 'D3', 'E3', 'G3']),
+  starThresholds:    [0, 63, 82],
+  unlockRequires:    ['tone-3'],
+  levelGoal:         'Navigate four notes — some steps, some skips — as pressure increases',
+  skillFocus:        'Handle mixed interval cues without hesitation under moderate enemy pressure',
+  mechanicBadge:     null,
+  estimatedDuration: '~4 minutes',
+  enemyBases: Object.freeze([Object.freeze({ x: 0.88, y: 0.50 })]),
+  phases: Object.freeze([
+    Object.freeze({ label: 'Four Keys',   duration: 50   }),
+    Object.freeze({ label: 'Development', duration: 80   }),
+    Object.freeze({ label: 'Climax',      duration: null }),
+  ]),
+});
 
-const TONE_5 = makeStub(
-  'tone-5', 'The Long Tone', '〰', 'tone', ['tone-4'],
-  'Sustain a note for its full value while keeping tone quality steady throughout',
-  'Develop tone control and breath or bow support on held notes'
-);
+// tone-5: Five-note pentatonic-ish run — C, D, E, F, G. A full hand position.
+// Two enemy bases raise the strategic pressure alongside the musical demand.
+const TONE_5 = Object.freeze({
+  id:                'tone-5',
+  name:              'The Long Tone',
+  subtitle:          'Five, in a row',
+  icon:              '〰',
+  region:            'tone',
+  isTutorial:        false,
+  isHub:             false,
+  isEntryNode:       false,
+  stub:              false,
+  maxWaves:          9,
+  difficultyMod:     1.15,
+  spawnMod:          1.00,
+  startResources:    200,
+  maxEnemyCap:       12,
+  allowedModes:      null,
+  winCondition:      'base',
+  chargeUnlocksBase: false,
+  tutorialOverlay:   null,
+  bpm:               115,
+  cueNotePool:       Object.freeze(['C3', 'D3', 'E3', 'F3', 'G3']),
+  starThresholds:    [0, 65, 85],
+  unlockRequires:    ['tone-4'],
+  levelGoal:         'Cover five notes across two enemy fronts — split your attention',
+  skillFocus:        'Play a full five-note hand position while managing dual enemy pressure',
+  mechanicBadge:     'NEW: Two Bases',
+  estimatedDuration: '~5 minutes',
+  enemyBases: Object.freeze([
+    Object.freeze({ x: 0.88, y: 0.33 }),  // upper base
+    Object.freeze({ x: 0.88, y: 0.67 }),  // lower base
+  ]),
+  phases: Object.freeze([
+    Object.freeze({ label: 'Five Keys',   duration: 50   }),
+    Object.freeze({ label: 'Development', duration: 70   }),
+    Object.freeze({ label: 'Assault',     duration: 80   }),
+    Object.freeze({ label: 'Climax',      duration: null }),
+  ]),
+});
 
-const TONE_6 = makeStub(
-  'tone-6', 'Speed Builder', '⚡', 'tone', ['tone-5'],
-  'Play a technical passage at increasing tempos without losing accuracy',
-  'Build the finger speed and coordination needed for faster musical passages'
-);
+// tone-6: Region climax — all seven white notes at a fast tempo.
+// Two bases, tight cue windows, max wave count. The full scale under fire.
+const TONE_6 = Object.freeze({
+  id:                'tone-6',
+  name:              'Speed Builder',
+  subtitle:          'All seven — as fast as you can',
+  icon:              '⚡',
+  region:            'tone',
+  isTutorial:        false,
+  isHub:             false,
+  isEntryNode:       false,
+  stub:              false,
+  maxWaves:          10,
+  difficultyMod:     1.30,
+  spawnMod:          0.90,   // faster enemy spawns — the pressure is on
+  startResources:    175,
+  maxEnemyCap:       12,
+  allowedModes:      null,
+  winCondition:      'base',
+  chargeUnlocksBase: false,
+  tutorialOverlay:   null,
+  bpm:               128,    // fast tempo = shorter cue windows
+  cueNotePool:       Object.freeze(['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3']),
+  starThresholds:    [0, 68, 88],
+  unlockRequires:    ['tone-5'],
+  levelGoal:         'Master the full scale at speed — the region boss',
+  skillFocus:        'React to any of the seven white notes at high tempo under maximum pressure',
+  mechanicBadge:     null,
+  estimatedDuration: '~5 minutes',
+  enemyBases: Object.freeze([
+    Object.freeze({ x: 0.88, y: 0.33 }),  // upper base
+    Object.freeze({ x: 0.88, y: 0.67 }),  // lower base
+  ]),
+  phases: Object.freeze([
+    Object.freeze({ label: 'All Keys',    duration: 50   }),
+    Object.freeze({ label: 'Development', duration: 70   }),
+    Object.freeze({ label: 'Assault',     duration: 80   }),
+    Object.freeze({ label: 'Climax',      duration: null }),
+  ]),
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Region 2 — RHYTHM & TIMING  (bottom-left branch, orange)
