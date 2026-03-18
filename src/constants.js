@@ -24,9 +24,10 @@
  * Scene flow:
  *   TITLE → INSTRUMENT_SELECT
  *     ├─ (first play) → LEVEL_START(T1) → [CALIBRATION →] PLAYING → … → PLAYING(T4) → WORLD_MAP
- *     └─ (returning)  → WORLD_MAP → LEVEL_START → [CALIBRATION →] PLAYING → VICTORY|DEFEAT → WORLD_MAP
+ *     ├─ (returning)  → WORLD_MAP → LEVEL_START → [CALIBRATION →] PLAYING → VICTORY|DEFEAT → WORLD_MAP
+ *     └─ (minigame)   → WORLD_MAP → LEVEL_START → MINIGAME → VICTORY|DEFEAT → WORLD_MAP
  *
- * @type {Readonly<{TITLE:string, INSTRUMENT_SELECT:string, WORLD_MAP:string, LEVEL_START:string, CALIBRATION:string, PLAYING:string, VICTORY:string, DEFEAT:string, ENDGAME:string}>}
+ * @type {Readonly<{TITLE:string, INSTRUMENT_SELECT:string, WORLD_MAP:string, LEVEL_START:string, CALIBRATION:string, PLAYING:string, MINIGAME:string, VICTORY:string, DEFEAT:string, ENDGAME:string}>}
  */
 export const SCENE = Object.freeze({
   TITLE:             'TITLE',
@@ -35,6 +36,7 @@ export const SCENE = Object.freeze({
   LEVEL_START:       'LEVEL_START',
   CALIBRATION:       'CALIBRATION',
   PLAYING:           'PLAYING',
+  MINIGAME:          'MINIGAME',
   VICTORY:           'VICTORY',
   DEFEAT:            'DEFEAT',
   ENDGAME:           'ENDGAME',
