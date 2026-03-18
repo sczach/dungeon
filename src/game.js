@@ -51,12 +51,14 @@ import { applyLesson }                             from './data/lessons.js';
 import { wireSettingsUI }                           from './ui/screens.js';
 import { minigameEngine }                          from './systems/minigameEngine.js';
 import { MetronomeMastery }                        from './minigames/metronomeMastery.js';
+import { RhythmChallenge }                         from './minigames/rhythmChallenge.js';
 
 // Re-export SCENE for callers that import from game.js
 export { SCENE };
 
 // ── Register minigame types ─────────────────────────────────────────────────
 minigameEngine.register('metronome-mastery', MetronomeMastery);
+minigameEngine.register('rhythm-challenge',  RhythmChallenge);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase system

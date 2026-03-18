@@ -655,23 +655,35 @@ const RHYTHM_2 = Object.freeze({
   phases:     Object.freeze([Object.freeze({ label: 'Rhythm', duration: null })]),
 });
 
-const RHYTHM_3 = makeStub(
-  'rhythm-3', 'Half & Whole', '𝅗𝅥', 'rhythm', ['rhythm-2'],
-  'Hold notes for two and four beats without rushing to the next',
-  'Practice longer note durations to develop patience and rhythmic control'
-);
+const RHYTHM_3 = Object.freeze({
+  ...makeStub(
+    'rhythm-3', 'Half & Whole', '𝅗𝅥', 'rhythm', ['rhythm-2'],
+    'Hold notes for two and four beats without rushing to the next',
+    'Practice longer note durations to develop patience and rhythmic control'
+  ),
+  gameType: 'rhythm-challenge',
+  stub:     false,
+});
 
-const RHYTHM_4 = makeStub(
-  'rhythm-4', 'Eighth Note Run', '♪♪', 'rhythm', ['rhythm-3'],
-  'Navigate eighth-note patterns by feeling the subdivisions between beats',
-  'Play twice as fast as the beat by subdividing — the key to all fast music'
-);
+const RHYTHM_4 = Object.freeze({
+  ...makeStub(
+    'rhythm-4', 'Eighth Note Run', '♪♪', 'rhythm', ['rhythm-3'],
+    'Navigate eighth-note patterns by feeling the subdivisions between beats',
+    'Play twice as fast as the beat by subdividing — the key to all fast music'
+  ),
+  gameType: 'rhythm-challenge',
+  stub:     false,
+});
 
-const RHYTHM_5 = makeStub(
-  'rhythm-5', 'Syncopation', '↩', 'rhythm', ['rhythm-4'],
-  'Attack notes off the beat, shifting the rhythmic emphasis forward',
-  'Create rhythmic tension by anticipating or delaying expected beat placements'
-);
+const RHYTHM_5 = Object.freeze({
+  ...makeStub(
+    'rhythm-5', 'Syncopation', '↩', 'rhythm', ['rhythm-4'],
+    'Attack notes off the beat, shifting the rhythmic emphasis forward',
+    'Create rhythmic tension by anticipating or delaying expected beat placements'
+  ),
+  gameType: 'rhythm-challenge',
+  stub:     false,
+});
 
 const RHYTHM_6 = makeStub(
   'rhythm-6', 'Polyrhythm Intro', '∞', 'rhythm', ['rhythm-5'],
