@@ -11,6 +11,31 @@ engine just makes them audible.
 
 ---
 
+## Pipeline Position
+
+```
+MINIGAME_ENGINE → tones, clicks, demo playback ──→ SOUND_ENGINE
+COMPOSITION_ENGINE → melody data (notes[], durations[]) → SOUND_ENGINE → Web Audio playback
+SOUND_ENGINE → mic pitch/chord detection → GAMEPLAY_ENGINE (accuracy scoring)
+SOUND_ENGINE → note events → MINIGAME_ENGINE (input for minigame handlers)
+```
+
+### Connected engines
+
+- [[MINIGAME_ENGINE]] — Minigames request tones (key presses), metronome clicks, and
+  phrase demo playback. Each handler contains its own `_playTone()` using the same
+  oscillator → gain → destination pattern.
+- [[COMPOSITION_ENGINE]] — Generates `{ notes[], durations[] }` melodies;
+  Sound Engine plays them via `playMelody()` in `melodyEngine.js`.
+- [[GAMEPLAY_ENGINE]] — Mic-detected notes feed into the accuracy formula
+  (`totalHits / totalMisses`). Detection quality directly affects star scoring.
+- [[GRAPHICS_ENGINE]] — Visual feedback (key highlights, flash effects) must fire
+  within 1 frame of the audio event — sync is critical for musical feel.
+- [[AI_ENGINE]] — Convergence testing verifies audio latency, oscillator cleanup,
+  mic detection accuracy (≥80%), and cross-browser compatibility.
+
+---
+
 ## Inputs
 | Input | Source | Description |
 |-------|--------|-------------|

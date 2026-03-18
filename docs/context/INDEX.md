@@ -39,12 +39,13 @@
 - **[[FILE_REFERENCE]]** — Every file: line count, exports, imports, purpose (one-line each)
 - **[[DECISIONS]]** — Why things are the way they are: architectural choices and rationale
 
-### Engine Skills (existing)
-- `docs/skills/SOUND_ENGINE.md` — Audio constraints and settled parameters
-- `docs/skills/GAMEPLAY_ENGINE.md` — Balance, scoring, difficulty rules
-- `docs/skills/GRAPHICS_ENGINE.md` — Rendering rules and performance budget
-- `docs/skills/COMPOSITION_ENGINE.md` — Melody generation constraints
-- `docs/skills/AI_ENGINE.md` — Enemy behavior and wave design rules
+### Engine Skills (`docs/skills/`)
+- **[[SOUND_ENGINE]]** — Audio constraints and settled parameters
+- **[[GAMEPLAY_ENGINE]]** — Balance, scoring, difficulty rules
+- **[[GRAPHICS_ENGINE]]** — Rendering rules and performance budget
+- **[[COMPOSITION_ENGINE]]** — Melody generation constraints
+- **[[AI_ENGINE]]** — Enemy behavior and wave design rules
+- **[[MINIGAME_ENGINE]]** — Minigame registry, BaseMinigame contract, build guide
 
 ## How to Use This
 

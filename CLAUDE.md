@@ -235,6 +235,7 @@ docs/
     GRAPHICS_ENGINE.md    — skill definition: rendering, UI, visual feedback
     COMPOSITION_ENGINE.md — skill definition: player songwriting / melody arc
     AI_ENGINE.md          — skill definition: NPC behavior, enemy AI
+    MINIGAME_ENGINE.md    — skill definition: minigame registry, BaseMinigame, build guide
   workflow/             — active workflow docs and prompt templates
   archive/              — historical planning docs (superseded; keep for reference)
     phase-1/            — Phase 1A–1C era docs

@@ -12,6 +12,32 @@ music theory (what makes a sequence of notes sound good together).
 
 ---
 
+## Pipeline Position
+
+```
+MINIGAME_ENGINE → phrase requests ──→ COMPOSITION_ENGINE
+COMPOSITION_ENGINE → melody data ──→ SOUND_ENGINE (Web Audio playback)
+COMPOSITION_ENGINE → note pools  ──→ GAMEPLAY_ENGINE (cueNotePool per level)
+```
+
+### Connected engines
+
+- [[MINIGAME_ENGINE]] — Call & Response minigame generates phrases that players must
+  echo. The Composition Engine defines the diatonic rules those phrases must follow.
+  Future minigames (e.g. theory-region note-matching) will also request phrase generation.
+- [[SOUND_ENGINE]] — Plays back generated melodies via the Web Audio API
+  (`playMelody()` in `melodyEngine.js`). The Composition Engine generates;
+  the Sound Engine renders to audio.
+- [[GAMEPLAY_ENGINE]] — Per-level `cueNotePool` arrays constrain which notes appear
+  as gameplay cues. These pools are diatonic subsets defined by the Composition Engine's
+  note selection rules.
+- [[AI_ENGINE]] — Evaluates melodic quality: are generated phrases musical?
+  Do they teach the intended concept? Do they sound "right" in the level's key?
+- [[GRAPHICS_ENGINE]] — No direct link currently. Future: sight-reading minigames
+  will need visual notation generated from Composition Engine phrase data.
+
+---
+
 ## Inputs
 | Input | Source | Description |
 |-------|--------|-------------|

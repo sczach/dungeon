@@ -12,6 +12,36 @@ opponent.
 
 ---
 
+## Pipeline Position
+
+```
+AI_ENGINE ←──→ all engines (evaluation and feedback loop)
+AI_ENGINE → balance adjustments → GAMEPLAY_ENGINE
+AI_ENGINE → design feedback    → MINIGAME_ENGINE
+AI_ENGINE → difficulty tuning  → GAMEPLAY_ENGINE
+```
+
+The AI Engine sits **outside** the production pipeline as the evaluation layer.
+It playtests outputs from all other engines and feeds corrections back.
+
+### Connected engines
+
+- [[MINIGAME_ENGINE]] — Evaluates minigame designs: is the concept fun? Is it balanced?
+  Does it teach the intended musical concept? Star thresholds achievable?
+  The AI Engine is the primary consumer of `/gametest` and `/balancecheck` results
+  applied to minigames.
+- [[GAMEPLAY_ENGINE]] — Evaluates tower-defense balance: damage math, economy,
+  wave pacing, star thresholds. Feeds adjustments back (e.g. "crossing too hard on
+  easy — lower difficultyMod").
+- [[SOUND_ENGINE]] — Evaluates audio quality: latency, oscillator leaks, mic
+  detection accuracy, cross-browser compatibility. Uses `/audiotest`.
+- [[GRAPHICS_ENGINE]] — Evaluates visual clarity: are cues readable with 5 enemies?
+  Does the performance budget hold on mobile? Are scene transitions clean?
+- [[COMPOSITION_ENGINE]] — Evaluates melodic quality: do generated phrases sound
+  musical? Are they diatonic? Do they teach what the level claims to teach?
+
+---
+
 ## Inputs
 | Input | Source | Description |
 |-------|--------|-------------|
