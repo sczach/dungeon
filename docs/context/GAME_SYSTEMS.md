@@ -218,9 +218,40 @@ Single straight horizontal path: `(0.0, 0.5) → (1.0, 0.5)`.
 - `getPositionOnPath(t, W, H, out)` — zero-allocation out-parameter pattern
 - Enemy uses this for movement each frame
 
+## Minigame Engine
+
+Added in Phase 2B. Separate from the tower-defense loop — runs its own rAF when `SCENE.MINIGAME` is active.
+
+**File:** `src/systems/minigameEngine.js`
+
+**Pattern:** Registry + self-contained handler classes in `src/minigames/`.
+
+```
+minigameEngine.register('type-id', HandlerClass)  ← in game.js at startup
+minigameEngine.launch(node, opts)                  ← called when LEVEL_START proceeds
+handler.done({ stars, score, accuracyPct, passed }) ← handler calls this when finished
+```
+
+**Existing handlers:**
+
+| gameType | File | Teaches |
+|----------|------|---------|
+| `metronome-mastery` | metronomeMastery.js | Rhythm / pulse |
+| `rhythm-challenge` | rhythmChallenge.js | Pattern reading |
+| `call-response` | callResponse.js | Melodic memory / ear training |
+| `coming-soon` | (built into engine) | Placeholder — 2s screen, exits |
+| `tower-defense` | (game.js main loop) | Default — routes to CALIBRATION |
+
+**Adding a new minigame:** see [[MINIGAME_ENGINE]] for the full build guide and contract.
+
+**Wiring a node:** set `gameType: 'your-type'` and `stub: false` on the worldMap node. Nodes with `stub: true` are skipped silently by game.js — always set `stub: false` for launchable nodes.
+
+---
+
 ## See Also
 
 - [[STATE]] — State fields each system reads/writes
 - [[DATA_MODELS]] — Level configs, skill definitions
 - [[INPUT_SYSTEM]] — How notes reach the systems
+- [[MINIGAME_ENGINE]] — Minigame engine full reference
 - `docs/skills/GAMEPLAY_ENGINE.md` — Balance constraints

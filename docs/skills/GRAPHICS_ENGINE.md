@@ -12,6 +12,31 @@ events (e.g. mode button tap) go through `game.js` callbacks.
 
 ---
 
+## Pipeline Position
+
+```
+GAMEPLAY_ENGINE → game state ──→ GRAPHICS_ENGINE → canvas pixels
+MINIGAME_ENGINE → UI layouts ──→ GRAPHICS_ENGINE (minigame rendering)
+GRAPHICS_ENGINE ← visual sync ← SOUND_ENGINE (key flash on tone play)
+```
+
+### Connected engines
+
+- [[GAMEPLAY_ENGINE]] — Produces the state that Graphics Engine renders each frame.
+  The renderer is pure output of the gameplay rules — it never feeds back.
+- [[MINIGAME_ENGINE]] — Minigames run their own Canvas render loops using the same
+  DPR scaling and piano geometry patterns. Piano key definitions are duplicated per
+  minigame handler to keep them self-contained.
+- [[SOUND_ENGINE]] — Visual feedback (key highlights, mode borders, flash effects)
+  must be synchronized with audio events. The audio fires first; the visual follows
+  on the same or next frame.
+- [[COMPOSITION_ENGINE]] — No direct link currently. Future: visual notation display
+  for sight-reading minigames would connect these two engines.
+- [[AI_ENGINE]] — Convergence testing verifies visual clarity, performance budget
+  (≤4ms per frame), and that cues are readable even with 5 enemies on screen.
+
+---
+
 ## Inputs
 | Input | Source | Description |
 |-------|--------|-------------|

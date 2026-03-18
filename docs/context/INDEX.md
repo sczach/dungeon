@@ -10,6 +10,8 @@
 | Bug fix in gameplay | [[GAME_SYSTEMS]], [[STATE]] |
 | UI/rendering work | [[RENDERING]], [[STATE]] |
 | New level or content | [[DATA_MODELS]], [[GAME_SYSTEMS]] |
+| **New minigame** | **[[MINIGAME_ENGINE]]** |
+| **Minigame balancing** | **[[MINIGAME_ENGINE]], [[DATA_MODELS]]** |
 | Input handling | [[INPUT_SYSTEM]], [[STATE]] |
 | Architecture decisions | [[ARCHITECTURE]], [[DECISIONS]] |
 | First time on project | [[ARCHITECTURE]], [[SETUP]] |
@@ -27,6 +29,7 @@
 - **[[INPUT_SYSTEM]]** — Keyboard mapping, MIDI, touch/click piano, mode cycling, charge mechanic
 - **[[RENDERING]]** — Renderer architecture, HUD, world map, per-scene draw methods, visual constants
 - **[[GAME_SYSTEMS]]** — Combat, waves, tablature, attack sequences, progression, cue system
+- **[[MINIGAME_ENGINE]]** — Minigame registry, BaseMinigame contract, existing minigames, build guide
 
 ### Data & Config
 - **[[DATA_MODELS]]** — Levels, world map nodes, skills, lessons, chord data
@@ -36,12 +39,13 @@
 - **[[FILE_REFERENCE]]** — Every file: line count, exports, imports, purpose (one-line each)
 - **[[DECISIONS]]** — Why things are the way they are: architectural choices and rationale
 
-### Engine Skills (existing)
-- `docs/skills/SOUND_ENGINE.md` — Audio constraints and settled parameters
-- `docs/skills/GAMEPLAY_ENGINE.md` — Balance, scoring, difficulty rules
-- `docs/skills/GRAPHICS_ENGINE.md` — Rendering rules and performance budget
-- `docs/skills/COMPOSITION_ENGINE.md` — Melody generation constraints
-- `docs/skills/AI_ENGINE.md` — Enemy behavior and wave design rules
+### Engine Skills (`docs/skills/`)
+- **[[SOUND_ENGINE]]** — Audio constraints and settled parameters
+- **[[GAMEPLAY_ENGINE]]** — Balance, scoring, difficulty rules
+- **[[GRAPHICS_ENGINE]]** — Rendering rules and performance budget
+- **[[COMPOSITION_ENGINE]]** — Melody generation constraints
+- **[[AI_ENGINE]]** — Enemy behavior and wave design rules
+- **[[MINIGAME_ENGINE]]** — Minigame registry, BaseMinigame contract, build guide
 
 ## How to Use This
 

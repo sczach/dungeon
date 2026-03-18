@@ -12,6 +12,32 @@ a meaningfully better game result.
 
 ---
 
+## Pipeline Position
+
+```
+MINIGAME_ENGINE → scoring rules, star thresholds → GAMEPLAY_ENGINE
+GAMEPLAY_ENGINE → game state → GRAPHICS_ENGINE (render each frame)
+GAMEPLAY_ENGINE → accuracy % → SOUND_ENGINE (mic input feeds scoring)
+AI_ENGINE → balance evaluation → GAMEPLAY_ENGINE (threshold tuning)
+COMPOSITION_ENGINE → note pools → GAMEPLAY_ENGINE (cueNotePool per level)
+```
+
+### Connected engines
+
+- [[MINIGAME_ENGINE]] — Minigames define internal scoring but MUST produce a result
+  compatible with the same `awardStars()` + `saveProgress()` progression path.
+  Star thresholds are defined per-handler, not in levels.js.
+- [[SOUND_ENGINE]] — Mic-detected notes feed into the accuracy formula. Sound Engine's
+  detection quality directly determines `totalHits / totalMisses` and therefore stars.
+- [[GRAPHICS_ENGINE]] — Renders the game state produced by Gameplay Engine rules
+  each frame. Renderer is pure output — never mutates the state Gameplay Engine owns.
+- [[COMPOSITION_ENGINE]] — Per-level `cueNotePool` constrains which notes appear
+  as cues. The Composition Engine's diatonic rules define valid note pools.
+- [[AI_ENGINE]] — Evaluates balance: is damage fair? Are star thresholds achievable?
+  Is the economy viable? Wave pacing appropriate? Feedback loop into threshold tuning.
+
+---
+
 ## Inputs
 | Input | Source | Description |
 |-------|--------|-------------|

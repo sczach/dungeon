@@ -200,6 +200,14 @@ src/
     progression.js        — localStorage persistence, star award/spend, applySkills
                             ProgressRecord: { bestStars, purchased, tutorialComplete }
     path.js               — enemy path waypoints
+    minigameEngine.js     — MinigameEngine registry + BaseMinigame base class
+                            register(gameTypeId, Class) / launch(node, opts) / stop()
+                            Singleton: import { minigameEngine } from './systems/minigameEngine.js'
+  minigames/              — Self-contained minigame handler classes (each runs its own rAF)
+    metronomeMastery.js   — Rhythm: tap in time with metronome, 4 BPM phases × 15s
+    rhythmChallenge.js    — Pattern: read + tap visual rhythm patterns, 3 rounds
+    callResponse.js       — Ear training: listen to phrase, echo it back, 5 rounds
+    README.md             — Catalogue of 8 planned minigame types
   input/
     keyboard.js           — piano key input; Space respects state.allowedModes
   ui/
@@ -220,12 +228,14 @@ src/
     skills.js             — SKILLS: Foundation/Technique/Mastery tiers (musical progression)
 docs/
   context/              — AI context docs (load selectively per task; see INDEX.md)
+                          MINIGAME_ENGINE.md — load this for any minigame work
   skills/
     SOUND_ENGINE.md       — skill definition: audio, melody, Web Audio API
     GAMEPLAY_ENGINE.md    — skill definition: balance, difficulty, scoring
     GRAPHICS_ENGINE.md    — skill definition: rendering, UI, visual feedback
     COMPOSITION_ENGINE.md — skill definition: player songwriting / melody arc
     AI_ENGINE.md          — skill definition: NPC behavior, enemy AI
+    MINIGAME_ENGINE.md    — skill definition: minigame registry, BaseMinigame, build guide
   workflow/             — active workflow docs and prompt templates
   archive/              — historical planning docs (superseded; keep for reference)
     phase-1/            — Phase 1A–1C era docs
