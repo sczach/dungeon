@@ -1,0 +1,225 @@
+{
+  "main": {
+    "id": "d37d98a0c7497945",
+    "type": "split",
+    "children": [
+      {
+        "id": "d0d12f9ec5b4014f",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "ac4ba9b5ccea78d6",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "docs/context/HANDOFF.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "HANDOFF"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "63450ec1a6aa0124",
+    "type": "split",
+    "children": [
+      {
+        "id": "0c71279a8f0bc66b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "66fd3018c4882084",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "7619ed6bb7ccbb15",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "acbeabdfc0eafe70",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "c2f2749f6e9580f7",
+    "type": "split",
+    "children": [
+      {
+        "id": "7326ac13db527f18",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "d7eef862addab07b",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "VISUAL_PROCESS_FLOW_SUMMARY.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for VISUAL_PROCESS_FLOW_SUMMARY"
+            }
+          },
+          {
+            "id": "56546ec56983dcef",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "VISUAL_PROCESS_FLOW_SUMMARY.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from VISUAL_PROCESS_FLOW_SUMMARY"
+            }
+          },
+          {
+            "id": "baea920ebafd3e56",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "c3f45929e654932f",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "c4b18132d9dbfd23",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "VISUAL_PROCESS_FLOW_SUMMARY.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of VISUAL_PROCESS_FLOW_SUMMARY"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "ac4ba9b5ccea78d6",
+  "lastOpenFiles": [
+    "docs/context/HANDOFF.md",
+    "inbox/README.md",
+    "README.md",
+    "inbox/TEMPLATE.md",
+    "inbox/processed",
+    "inbox",
+    "docs/archive/phase-1/SONNET_PROJECT_INSTRUCTIONS.md",
+    "docs/archive/phase-1/SONNET_PROJECT_INSTRUCTIONS_1C.md",
+    "docs/archive/phase-1/SONNET_ONBOARDING_GUIDE.md",
+    "docs/archive/phase-1/REF_GAMECORE.md",
+    "docs/archive/phase-1/REF_BACKEND.md",
+    "docs/archive/phase-1/REF_AUDIO.md",
+    "docs/archive/phase-1/BRIEFING_PROMPTS.md",
+    "VISUAL_PROCESS_FLOW_SUMMARY.md",
+    "docs/archive/VISUAL_PROCESS_FLOW_SUMMARY.md",
+    "docs/archive/REF_GAMECORE_V2.md",
+    "docs/archive/REF_AUDIO_V2.md",
+    "docs/archive/PROMPT_SETUP_AGENT_INFRA_INSTRUCTIONS.md",
+    "docs/archive/PROMPT_SETUP_AGENT_INFRA.md",
+    "docs/archive/PROMPT_CLAUDE_CODE_SONNET.md",
+    "docs/archive/PHASE_2A_STRATEGY.md",
+    "docs/archive/PHASE_1D_ACTION_PLAN.md",
+    "docs/archive/CLAUDE_PHASE_2.md",
+    "docs/archive/CLAUDE_CODE_FIX_BLOCKERS.md",
+    "docs/workflow/PROMPT_HAIKU_PLANNING.md",
+    "docs/workflow/DEVELOPMENT_WORKFLOW_V2.md",
+    "docs/workflow/BRIEFING_PROMPTS_V2.md",
+    "docs/workflow/AGENT_TUNING_WORKFLOW.md",
+    "docs/archive/phase-1",
+    "docs/archive",
+    "docs/workflow",
+    "docs/context",
+    "src/ui/instrumentselect.js",
+    "src/ui/worldMapRenderer.js",
+    "src/ui/settings.js",
+    "src/ui/screens.js"
+  ]
+}
