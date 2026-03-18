@@ -685,11 +685,15 @@ const RHYTHM_5 = Object.freeze({
   stub:     false,
 });
 
-const RHYTHM_6 = makeStub(
-  'rhythm-6', 'Polyrhythm Intro', '∞', 'rhythm', ['rhythm-5'],
-  'Layer two rhythmic patterns simultaneously to develop independence',
-  'Play two-against-three cross-rhythms to unlock advanced coordination'
-);
+const RHYTHM_6 = Object.freeze({
+  ...makeStub(
+    'rhythm-6', 'Polyrhythm Intro', '∞', 'rhythm', ['rhythm-5'],
+    'Layer two rhythmic patterns simultaneously to develop independence',
+    'Play two-against-three cross-rhythms to unlock advanced coordination'
+  ),
+  gameType: 'coming-soon',
+  stub:     false,
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Region 3 — MUSIC THEORY  (right branch, purple)
@@ -697,42 +701,66 @@ const RHYTHM_6 = makeStub(
 // Reference: Music Theory for Guitarists, Alfred's Basic Theory, Berklee
 // ─────────────────────────────────────────────────────────────────────────────
 
-const THEORY_1 = makeStub(
-  'theory-1', 'The Major Scale', '🎼', 'theory', ['hub'],
-  'Play the C major scale pattern and identify every interval within it',
-  'Learn the seven notes of the major scale and why they sound the way they do',
-  true   // isEntryNode
-);
+const THEORY_1 = Object.freeze({
+  ...makeStub(
+    'theory-1', 'The Major Scale', '🎼', 'theory', ['hub'],
+    'Play the C major scale pattern and identify every interval within it',
+    'Learn the seven notes of the major scale and why they sound the way they do',
+    true   // isEntryNode
+  ),
+  gameType: 'coming-soon',
+  stub:     false,
+});
 
-const THEORY_2 = makeStub(
-  'theory-2', 'Intervals', '↔', 'theory', ['theory-1'],
-  'Recognize and play thirds, fifths, and octaves by ear and by position',
-  'Understand the distance between notes as the building block of harmony'
-);
+const THEORY_2 = Object.freeze({
+  ...makeStub(
+    'theory-2', 'Intervals', '↔', 'theory', ['theory-1'],
+    'Recognize and play thirds, fifths, and octaves by ear and by position',
+    'Understand the distance between notes as the building block of harmony'
+  ),
+  gameType: 'coming-soon',
+  stub:     false,
+});
 
-const THEORY_3 = makeStub(
-  'theory-3', 'The Minor Scale', '🌙', 'theory', ['theory-2'],
-  'Play the natural minor scale and hear how it contrasts with major',
-  'Compare major and minor scales to discover how a single note change transforms emotion'
-);
+const THEORY_3 = Object.freeze({
+  ...makeStub(
+    'theory-3', 'The Minor Scale', '🌙', 'theory', ['theory-2'],
+    'Play the natural minor scale and hear how it contrasts with major',
+    'Compare major and minor scales to discover how a single note change transforms emotion'
+  ),
+  gameType: 'coming-soon',
+  stub:     false,
+});
 
-const THEORY_4 = makeStub(
-  'theory-4', 'Chord Construction', '🧱', 'theory', ['theory-3'],
-  'Build major and minor triads from root, third, and fifth',
-  'Understand why three specific notes stacked together produce a chord'
-);
+const THEORY_4 = Object.freeze({
+  ...makeStub(
+    'theory-4', 'Chord Construction', '🧱', 'theory', ['theory-3'],
+    'Build major and minor triads from root, third, and fifth',
+    'Understand why three specific notes stacked together produce a chord'
+  ),
+  gameType: 'coming-soon',
+  stub:     false,
+});
 
-const THEORY_5 = makeStub(
-  'theory-5', 'The Progression', '🔁', 'theory', ['theory-4'],
-  'Play the I-IV-V chord progression and feel how it wants to resolve',
-  'Master the most common chord sequence behind thousands of songs'
-);
+const THEORY_5 = Object.freeze({
+  ...makeStub(
+    'theory-5', 'The Progression', '🔁', 'theory', ['theory-4'],
+    'Play the I-IV-V chord progression and feel how it wants to resolve',
+    'Master the most common chord sequence behind thousands of songs'
+  ),
+  gameType: 'coming-soon',
+  stub:     false,
+});
 
-const THEORY_6 = makeStub(
-  'theory-6', 'Modal Exploration', '🌀', 'theory', ['theory-5'],
-  'Shift between Dorian and Mixolydian to explore different tonal colors',
-  'Discover how starting a scale on a different note changes its emotional character'
-);
+const THEORY_6 = Object.freeze({
+  ...makeStub(
+    'theory-6', 'Modal Exploration', '🌀', 'theory', ['theory-5'],
+    'Shift between Dorian and Mixolydian to explore different tonal colors',
+    'Discover how starting a scale on a different note changes its emotional character'
+  ),
+  gameType: 'coming-soon',
+  stub:     false,
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Region 4 — MUSICIANSHIP  (top branch, green)
@@ -740,42 +768,68 @@ const THEORY_6 = makeStub(
 // Reference: ABRSM musicianship grades, ear training methods
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MUSIC_1 = makeStub(
-  'music-1', 'Call & Response', '📣', 'musicianship', ['hub'],
-  'Listen to a musical phrase and play a coherent, connected response',
-  'Develop musical dialogue skills — the foundation of all improvisation',
-  true   // isEntryNode
-);
+const MUSIC_1 = Object.freeze({
+  ...makeStub(
+    'music-1', 'Call & Response', '📣', 'musicianship', ['hub'],
+    'Listen to a musical phrase and play a coherent, connected response',
+    'Develop musical dialogue skills — the foundation of all improvisation',
+    true   // isEntryNode
+  ),
+  gameType:          'call-response',
+  stub:              false,
+  mechanicBadge:     'NEW: Minigame',
+  estimatedDuration: '~2 minutes',
+});
 
-const MUSIC_2 = makeStub(
-  'music-2', 'The Phrase', '〜', 'musicianship', ['music-1'],
-  'Shape a 4-bar melody with a clear rise, peak, and fall',
-  'Understand musical phrasing — how notes connect into meaningful sentences'
-);
+const MUSIC_2 = Object.freeze({
+  ...makeStub(
+    'music-2', 'The Phrase', '〜', 'musicianship', ['music-1'],
+    'Shape a 4-bar melody with a clear rise, peak, and fall',
+    'Understand musical phrasing — how notes connect into meaningful sentences'
+  ),
+  gameType: 'call-response',
+  stub:     false,
+});
 
-const MUSIC_3 = makeStub(
-  'music-3', 'Dynamics', '📢', 'musicianship', ['music-1'],
-  'Control your volume to shape the emotional character of a passage',
-  'Use loud and soft playing intentionally to add expression and drama'
-);
+const MUSIC_3 = Object.freeze({
+  ...makeStub(
+    'music-3', 'Dynamics', '📢', 'musicianship', ['music-1'],
+    'Control your volume to shape the emotional character of a passage',
+    'Use loud and soft playing intentionally to add expression and drama'
+  ),
+  gameType: 'call-response',
+  stub:     false,
+});
 
-const MUSIC_4 = makeStub(
-  'music-4', 'Sight Reading I', '👁', 'musicianship', ['music-2'],
-  'Read simple notation in real time without prior preparation',
-  'Translate written symbols into sound — the literacy skill of musicians'
-);
+const MUSIC_4 = Object.freeze({
+  ...makeStub(
+    'music-4', 'Sight Reading I', '👁', 'musicianship', ['music-2'],
+    'Read simple notation in real time without prior preparation',
+    'Translate written symbols into sound — the literacy skill of musicians'
+  ),
+  gameType: 'coming-soon',
+  stub:     false,
+});
 
-const MUSIC_5 = makeStub(
-  'music-5', 'Ear Training', '👂', 'musicianship', ['music-3'],
-  'Match a heard pitch and identify intervals by ear alone',
-  'Develop your inner ear — the skill that lets you play what you imagine'
-);
+const MUSIC_5 = Object.freeze({
+  ...makeStub(
+    'music-5', 'Ear Training', '👂', 'musicianship', ['music-3'],
+    'Match a heard pitch and identify intervals by ear alone',
+    'Develop your inner ear — the skill that lets you play what you imagine'
+  ),
+  gameType: 'call-response',
+  stub:     false,
+});
 
-const MUSIC_6 = makeStub(
-  'music-6', 'The Performance', '🎭', 'musicianship', ['music-4', 'music-5'],
-  'Combine every skill you have learned in a complete musical performance',
-  'The final challenge — all regions tested in a single, full-length piece'
-);
+const MUSIC_6 = Object.freeze({
+  ...makeStub(
+    'music-6', 'The Performance', '🎭', 'musicianship', ['music-4', 'music-5'],
+    'Combine every skill you have learned in a complete musical performance',
+    'The final challenge — all regions tested in a single, full-length piece'
+  ),
+  gameType: 'coming-soon',
+  stub:     false,
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Node list with canvas positions (2400 × 1800 logical map space)
