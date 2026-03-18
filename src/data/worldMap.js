@@ -601,11 +601,24 @@ export const TUTORIAL_SEQUENCE = Object.freeze([
  * Whether a world-map node is unlocked given current progression.
  * Hub and region nodes are locked until tutorialComplete (via hub's unlockRequires: ['tutorial-4']).
  *
+ * Hub nodes are non-playable so they never accumulate stars. Instead, a hub is
+ * considered unlocked when its own prerequisites are satisfied (recursive check).
+ * A visited Set guards against cycles.
+ *
  * @param {object} node
  * @param {{ bestStars: Object.<string,number>, tutorialComplete?: boolean }} progression
+ * @param {Set<string>} [_visited]  — internal cycle guard, do not pass externally
  * @returns {boolean}
  */
-export function isNodeUnlocked(node, progression) {
+export function isNodeUnlocked(node, progression, _visited = new Set()) {
   if (!node.unlockRequires || node.unlockRequires.length === 0) return true;
-  return node.unlockRequires.every(req => (progression.bestStars?.[req] ?? 0) >= 1);
+  if (_visited.has(node.id)) return false;   // cycle safety
+  _visited.add(node.id);
+  return node.unlockRequires.every(req => {
+    const reqNode = WORLD_MAP_NODES_BY_ID[req];
+    // Hub nodes can never earn stars — treat them as unlocked when their own
+    // prerequisites are met (e.g. hub unlocks when tutorial-4 is beaten).
+    if (reqNode?.isHub) return isNodeUnlocked(reqNode, progression, _visited);
+    return (progression.bestStars?.[req] ?? 0) >= 1;
+  });
 }
