@@ -219,12 +219,16 @@ src/
     lessons.js            — LESSONS: level-as-lesson content (concept, notes, success metrics)
     skills.js             — SKILLS: Foundation/Technique/Mastery tiers (musical progression)
 docs/
+  context/              — AI context docs (load selectively per task; see INDEX.md)
   skills/
     SOUND_ENGINE.md       — skill definition: audio, melody, Web Audio API
     GAMEPLAY_ENGINE.md    — skill definition: balance, difficulty, scoring
     GRAPHICS_ENGINE.md    — skill definition: rendering, UI, visual feedback
     COMPOSITION_ENGINE.md — skill definition: player songwriting / melody arc
     AI_ENGINE.md          — skill definition: NPC behavior, enemy AI
+  workflow/             — active workflow docs and prompt templates
+  archive/              — historical planning docs (superseded; keep for reference)
+    phase-1/            — Phase 1A–1C era docs
 .claude/
   commands/
     gametest.md           — gameplay test pass instructions
@@ -234,13 +238,21 @@ docs/
 
 ---
 
-## Planning docs (separate location)
+## Planning docs
 `C:\Users\wbryk\OneDrive\Desktop\Chordwars\`
-- `PHASE_2A_STRATEGY.md` — Phase 2A bug list, root causes, fix strategy (CANONICAL for this phase)
-- `Chord_Wars_GDD_v1.0.docx` — Game Design Document
-- `Chord_Wars_Roadmap_v1.1.docx` — Development Roadmap
-- `Chord_Wars_Wireframes.jsx` — UI Wireframes
-- `REF_AUDIO.md`, `REF_BACKEND.md`, `REF_GAMECORE.md` — Reference docs
+- `Phase 1/Chord_Wars_GDD_v1.0.docx` — Game Design Document
+- `Phase 1/Chord_Wars_Roadmap_v1.1.docx` — Development Roadmap
+- `Phase 1/Chord_Wars_Wireframes.jsx` — UI Wireframes
+
+`docs/archive/` — Historical planning docs (all moved here)
+- `PHASE_2A_STRATEGY.md` — Phase 2A bug list, root causes, fix strategy
+- `REF_AUDIO_V2.md`, `REF_GAMECORE_V2.md` — Phase 2 reference docs (superseded)
+- `phase-1/REF_AUDIO.md`, `phase-1/REF_BACKEND.md`, `phase-1/REF_GAMECORE.md` — Phase 1 refs
+
+`docs/workflow/` — Active workflow docs
+- `BRIEFING_PROMPTS_V2.md` — Session prompt templates
+- `DEVELOPMENT_WORKFLOW_V2.md` — How to run Claude Code sessions
+- `AGENT_TUNING_WORKFLOW.md` — Engine agent-tuning loop
 
 ---
 

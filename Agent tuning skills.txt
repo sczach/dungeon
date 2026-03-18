@@ -1,0 +1,13 @@
+Agent tuning skills:
+1. Have the agent run them
+2. see how it falls on its face
+2a. have an agent run it
+2b. see if it runs into trouble
+2c. walk through failures with the agent
+2d. ask it to edit the skill source
+2e. repeat until it converges to stability (fairly quickly)
+3. ask how it would correct the skill text
+4. after 1-2 test runs, it'll be super honed
+
+after about 2-3 days of adding more skills the job is completely automated, even the most nuanced crap.
+
