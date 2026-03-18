@@ -4,10 +4,10 @@
  *
  * Musical skill: tap in time with a metronome across four BPM phases.
  * Play time: 60 seconds (4 phases × 15 s each).
- * Input: any piano key = beat tap.
+ * Input: any piano key tap counts as a beat hit.
  *
  * Audio: Web Audio API lookahead scheduler (no setInterval).
- * Rendering: Canvas 2D only (no DOM elements).
+ * Rendering: Canvas 2D scrolling note highway (no DOM elements).
  */
 
 import { BaseMinigame } from '../systems/minigameEngine.js';
@@ -27,15 +27,21 @@ const PHASES = Object.freeze([
   { bpm: 110, label: 'In the pocket' },
   { bpm: 125, label: 'Full tempo' },
 ]);
-const PHASE_DURATION   = 15;   // seconds per phase
-const TOTAL_DURATION   = PHASE_DURATION * PHASES.length; // 60s
-const LOOKAHEAD        = 0.1;  // schedule beats 100ms ahead
-const PERFECT_WINDOW   = 0.05; // ±50ms
-const OK_WINDOW        = 0.15; // ±150ms
-const CLICK_FREQ       = 1000; // Hz
-const CLICK_DURATION   = 0.02; // 20ms
+const PHASE_DURATION = 15;                      // seconds per phase
+const TOTAL_DURATION = PHASE_DURATION * PHASES.length; // 60s
+const LOOKAHEAD      = 0.1;                     // schedule beats 100ms ahead
+const PERFECT_WINDOW = 0.05;                    // ±50ms
+const OK_WINDOW      = 0.15;                    // ±150ms
+const CLICK_FREQ     = 1000;                    // Hz
+const CLICK_DURATION = 0.02;                    // 20ms
+
+// Speed formula: each beat travels 40% of canvas width per beat period.
+// pixelsPerSec = (W * 0.4) / beatSec  →  higher BPM = faster scroll.
+const PIXELS_PER_BEAT_FRACTION = 0.4;
+
 const FEEDBACK_FADE_MS = 400;
-const HISTORY_SIZE     = 8;    // accuracy bar squares
+const BEAT_FADE_SEC    = 0.7;   // seconds for judged beats to fade out
+const HISTORY_SIZE     = 8;     // kept for _pushHistory tracking
 
 // ─── Colours ────────────────────────────────────────────────────────────────
 const COL_BG       = '#1a1a2e';
@@ -43,8 +49,8 @@ const COL_TEXT     = '#ffffff';
 const COL_DIM      = '#aaaacc';
 const COL_PERFECT  = '#44ee66';
 const COL_OK       = '#eecc44';
-const COL_MISS     = '#666688';
-const COL_PENDULUM = '#6688ff';
+const COL_MISS_X   = '#ff4444';
+const COL_HIT_LINE = '#6677cc';
 
 export class MetronomeMastery extends BaseMinigame {
   start() {
@@ -53,27 +59,23 @@ export class MetronomeMastery extends BaseMinigame {
       this.done({ stars: 0, score: 0, accuracyPct: 0, passed: false });
       return;
     }
-    // Resume if suspended (mobile)
     if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
 
     this._audioCtx = audioCtx;
 
     // ── Timing state ──────────────────────────────────────────────────────
-    this._startTime     = audioCtx.currentTime;
-    this._nextBeatTime  = this._startTime + 0.5; // first beat after 500ms grace
-    this._currentPhase  = 0;
-    this._beatQueue     = [];   // { time, judged }
-    this._totalBeats    = 0;
-    this._perfects      = 0;
-    this._oks           = 0;
-    this._misses        = 0;
-    this._history       = [];   // last N tap results: 'perfect'|'ok'|'miss'
-    this._feedback      = null; // { text, color, time }
-    this._lastTapTime   = -1;
-    this._finished      = false;
-
-    // ── Pendulum state ────────────────────────────────────────────────────
-    this._pendulumAngle = 0;
+    this._startTime    = audioCtx.currentTime;
+    this._nextBeatTime = this._startTime + 0.5; // first beat after 500ms grace
+    this._currentPhase = 0;
+    this._beatQueue    = [];   // { time, judged, result?, judgedAt? }
+    this._totalBeats   = 0;
+    this._perfects     = 0;
+    this._oks          = 0;
+    this._misses       = 0;
+    this._history      = [];
+    this._feedback     = null; // { text, color, time }
+    this._lastTapTime  = -1;
+    this._finished     = false;
 
     // ── Input ─────────────────────────────────────────────────────────────
     this._onKeyDown = (e) => {
@@ -85,7 +87,6 @@ export class MetronomeMastery extends BaseMinigame {
     };
     document.addEventListener('keydown', this._onKeyDown);
 
-    // Touch input on canvas
     this._onTouchStart = (e) => {
       if (this._finished) return;
       e.preventDefault();
@@ -94,8 +95,7 @@ export class MetronomeMastery extends BaseMinigame {
     this.canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
     this.canvas.addEventListener('mousedown', this._onTouchStart);
 
-    // ── Start rAF loop ────────────────────────────────────────────────────
-    this._prevTime = performance.now();
+    // ── rAF loop ──────────────────────────────────────────────────────────
     const loop = () => {
       if (this._finished) return;
       this._update();
@@ -123,52 +123,53 @@ export class MetronomeMastery extends BaseMinigame {
   // ─── Update ───────────────────────────────────────────────────────────────
 
   _update() {
-    const ctx  = this._audioCtx;
-    const now  = ctx.currentTime;
+    const ctx     = this._audioCtx;
+    const now     = ctx.currentTime;
     const elapsed = now - this._startTime;
 
-    // ── Check game over ─────────────────────────────────────────────────
     if (elapsed >= TOTAL_DURATION) {
       this._finish();
       return;
     }
 
-    // ── Current phase ───────────────────────────────────────────────────
     this._currentPhase = Math.min(
       PHASES.length - 1,
       Math.floor(elapsed / PHASE_DURATION)
     );
-    const bpm      = PHASES[this._currentPhase].bpm;
-    const beatSec  = 60 / bpm;
+    const bpm     = PHASES[this._currentPhase].bpm;
+    const beatSec = 60 / bpm;
 
     // ── Lookahead scheduler ─────────────────────────────────────────────
     while (this._nextBeatTime < now + LOOKAHEAD) {
-      // Mark any previous unjudged beat as a miss before scheduling next
       this._expireOldBeats(this._nextBeatTime - beatSec * 0.5);
-
       this._scheduleClick(this._nextBeatTime);
-      this._beatQueue.push({ time: this._nextBeatTime, judged: false });
+      this._beatQueue.push({ time: this._nextBeatTime, judged: false, result: null, judgedAt: null });
       this._totalBeats++;
       this._nextBeatTime += beatSec;
     }
 
-    // Expire beats that are too old to hit (past OK_WINDOW)
     this._expireOldBeats(now - OK_WINDOW);
+
+    // Prune beats that have fully faded from view (judged + faded out)
+    while (
+      this._beatQueue.length > 0 &&
+      this._beatQueue[0].judged &&
+      now - this._beatQueue[0].judgedAt > BEAT_FADE_SEC + 0.2
+    ) {
+      this._beatQueue.shift();
+    }
   }
 
   _expireOldBeats(cutoff) {
     for (let i = 0; i < this._beatQueue.length; i++) {
       const b = this._beatQueue[i];
       if (!b.judged && b.time < cutoff) {
-        b.judged = true;
+        b.judged   = true;
+        b.result   = 'miss';
+        b.judgedAt = b.time;
         this._misses++;
         this._pushHistory('miss');
       }
-    }
-    // Prune fully judged beats older than 1s
-    const now = this._audioCtx.currentTime;
-    while (this._beatQueue.length > 0 && this._beatQueue[0].time < now - 1) {
-      this._beatQueue.shift();
     }
   }
 
@@ -194,8 +195,8 @@ export class MetronomeMastery extends BaseMinigame {
   _handleTap() {
     const now = this._audioCtx.currentTime;
 
-    // Debounce rapid double-taps (< 80ms apart)
-    if (now - this._lastTapTime < 0.08) return;
+    // Debounce rapid double-taps (< 30ms apart)
+    if (now - this._lastTapTime < 0.03) return;
     this._lastTapTime = now;
 
     // Find nearest unjudged beat
@@ -212,18 +213,21 @@ export class MetronomeMastery extends BaseMinigame {
     }
 
     if (bestIdx < 0 || bestDelta > OK_WINDOW) {
-      // No beat nearby — count as a miss tap
-      this._setFeedback('MISS', COL_MISS);
+      this._setFeedback('MISS', COL_MISS_X);
       return;
     }
 
-    this._beatQueue[bestIdx].judged = true;
+    const b    = this._beatQueue[bestIdx];
+    b.judged   = true;
+    b.judgedAt = now;
 
     if (bestDelta <= PERFECT_WINDOW) {
+      b.result = 'perfect';
       this._perfects++;
       this._pushHistory('perfect');
       this._setFeedback('PERFECT', COL_PERFECT);
     } else {
+      b.result = 'ok';
       this._oks++;
       this._pushHistory('ok');
       this._setFeedback('OK', COL_OK);
@@ -245,12 +249,12 @@ export class MetronomeMastery extends BaseMinigame {
     if (this._finished) return;
     this._finished = true;
 
-    const total    = this._perfects + this._oks + this._misses;
+    const total      = this._perfects + this._oks + this._misses;
     const perfectPct = total > 0 ? Math.round((this._perfects / total) * 100) : 0;
     const missRate   = total > 0 ? this._misses / total : 0;
 
     let stars;
-    if (missRate > 0.5)     stars = 0;
+    if (missRate > 0.5)        stars = 0;
     else if (perfectPct >= 85) stars = 3;
     else if (perfectPct >= 65) stars = 2;
     else                       stars = 1;
@@ -267,116 +271,184 @@ export class MetronomeMastery extends BaseMinigame {
 
   _render() {
     const { ctx, canvas } = this;
-    const dpr = window.devicePixelRatio || 1;
-    const W   = canvas.width / dpr;
-    const H   = canvas.height / dpr;
-    const now = this._audioCtx.currentTime;
+    const dpr     = window.devicePixelRatio || 1;
+    const W       = canvas.width / dpr;
+    const H       = canvas.height / dpr;
+    const now     = this._audioCtx.currentTime;
     const elapsed = now - this._startTime;
+    const phase   = PHASES[this._currentPhase];
+    const bpm     = phase.bpm;
+    const beatSec = 60 / bpm;
+
+    // How many pixels a beat travels per second at this BPM
+    const pixelsPerSec = (W * PIXELS_PER_BEAT_FRACTION) / beatSec;
+
+    // ── Layout ────────────────────────────────────────────────────────────
+    const headerH    = H * 0.14;
+    const highwayTop = headerH;
+    const highwayH   = H * 0.60;
+    const highwayBot = highwayTop + highwayH;
+    const highwayCy  = highwayTop + highwayH / 2;
+    const hitX       = W / 2;
+    const beatRadius = Math.min(highwayH * 0.16, 22);
 
     // ── Background ──────────────────────────────────────────────────────
     ctx.fillStyle = COL_BG;
     ctx.fillRect(0, 0, W, H);
 
-    // ── Phase label + BPM (top) ─────────────────────────────────────────
-    const phase = PHASES[this._currentPhase];
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle    = COL_DIM;
-    ctx.font         = `bold ${Math.max(14, W * 0.04)}px sans-serif`;
-    ctx.fillText(`Phase ${this._currentPhase + 1}: ${phase.label}`, W / 2, H * 0.06);
-    ctx.font         = `${Math.max(12, W * 0.03)}px sans-serif`;
-    ctx.fillText(`${phase.bpm} BPM`, W / 2, H * 0.06 + Math.max(14, W * 0.04) + 6);
+    // ── Highway background ──────────────────────────────────────────────
+    ctx.fillStyle = '#12122a';
+    ctx.fillRect(0, highwayTop, W, highwayH);
 
-    // ── Pendulum (center) ───────────────────────────────────────────────
-    const beatSec     = 60 / phase.bpm;
-    const beatProgress = ((now - this._startTime) % beatSec) / beatSec;
-    // Sine wave: 0→1→0→-1→0 over one beat cycle
-    const swing = Math.sin(beatProgress * Math.PI * 2);
-
-    const pendCx  = W / 2;
-    const pendCy  = H * 0.42;
-    const pendLen = Math.min(W, H) * 0.18;
-    const bobX    = pendCx + swing * pendLen;
-    const bobY    = pendCy;
-
-    // Arm
-    ctx.strokeStyle = COL_DIM;
-    ctx.lineWidth   = 2;
+    // Lane edges
+    ctx.strokeStyle = '#2a2a4a';
+    ctx.lineWidth   = 1;
     ctx.beginPath();
-    ctx.moveTo(pendCx, pendCy - pendLen * 0.5);
-    ctx.lineTo(bobX, bobY);
+    ctx.moveTo(0, highwayTop); ctx.lineTo(W, highwayTop);
+    ctx.moveTo(0, highwayBot); ctx.lineTo(W, highwayBot);
     ctx.stroke();
 
-    // Bob — pulses brighter on beat (first 30% of beat cycle)
-    const onBeat    = beatProgress < 0.15 || beatProgress > 0.85;
-    const bobRadius = Math.min(W, H) * (onBeat ? 0.045 : 0.035);
-    ctx.fillStyle   = onBeat ? '#aabbff' : COL_PENDULUM;
+    // Centre guide rail (faint dashed line)
+    ctx.strokeStyle = '#1e1e38';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([6, 10]);
     ctx.beginPath();
-    ctx.arc(bobX, bobY, bobRadius, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(0, highwayCy); ctx.lineTo(W, highwayCy);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
-    // ── Feedback text (below center) ────────────────────────────────────
+    // ── Hit line glow + bar ──────────────────────────────────────────────
+    const nearHit = this._beatQueue.some(b => !b.judged && Math.abs(b.time - now) < 0.05);
+
+    const grd = ctx.createLinearGradient(hitX - 24, 0, hitX + 24, 0);
+    const glowA = nearHit ? 0.45 : 0.12;
+    grd.addColorStop(0,   `rgba(100,120,255,0)`);
+    grd.addColorStop(0.5, `rgba(160,180,255,${glowA})`);
+    grd.addColorStop(1,   `rgba(100,120,255,0)`);
+    ctx.fillStyle = grd;
+    ctx.fillRect(hitX - 24, highwayTop, 48, highwayH);
+
+    ctx.strokeStyle = nearHit ? '#aabbff' : COL_HIT_LINE;
+    ctx.lineWidth   = nearHit ? 3 : 2;
+    ctx.beginPath();
+    ctx.moveTo(hitX, highwayTop);
+    ctx.lineTo(hitX, highwayBot);
+    ctx.stroke();
+
+    // ── Beat circles ────────────────────────────────────────────────────
+    for (const b of this._beatQueue) {
+      const bx = hitX + (b.time - now) * pixelsPerSec;
+
+      // Cull well off-screen
+      if (bx < -beatRadius * 3 || bx > W + beatRadius * 3) continue;
+
+      if (!b.judged) {
+        // Upcoming beat — brighter as it approaches the hit line
+        const proximity = 1 - Math.min(1, Math.abs(b.time - now) / (beatSec * 1.5));
+        const r = Math.round(80  + proximity * 120);
+        const g = Math.round(80  + proximity * 120);
+        const bl = Math.round(120 + proximity * 135);
+        ctx.fillStyle   = `rgb(${r},${g},${bl})`;
+        ctx.strokeStyle = proximity > 0.5 ? '#8899ff' : '#333355';
+        ctx.lineWidth   = 2;
+        ctx.beginPath();
+        ctx.arc(bx, highwayCy, beatRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Ring pulse when beat is right at the hit line (±30ms)
+        if (Math.abs(b.time - now) < 0.03) {
+          const pulseR = beatRadius + 8 + (0.03 - Math.abs(b.time - now)) * 200;
+          ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+          ctx.lineWidth   = 2;
+          ctx.beginPath();
+          ctx.arc(bx, highwayCy, pulseR, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else {
+        // Past beat — fade based on time since judgment
+        const timeSince  = now - (b.judgedAt ?? b.time);
+        const fadeAlpha  = Math.max(0, 1 - timeSince / BEAT_FADE_SEC);
+        if (fadeAlpha <= 0) continue;
+
+        ctx.globalAlpha = fadeAlpha;
+
+        if (b.result === 'perfect') {
+          ctx.fillStyle   = COL_PERFECT;
+          ctx.strokeStyle = '#22cc44';
+          ctx.lineWidth   = 2;
+          ctx.beginPath();
+          ctx.arc(bx, highwayCy, beatRadius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        } else if (b.result === 'ok') {
+          ctx.fillStyle   = COL_OK;
+          ctx.strokeStyle = '#cc9922';
+          ctx.lineWidth   = 2;
+          ctx.beginPath();
+          ctx.arc(bx, highwayCy, beatRadius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          // Miss — red X
+          ctx.strokeStyle = COL_MISS_X;
+          ctx.lineWidth   = 3;
+          const s = beatRadius * 0.65;
+          ctx.beginPath();
+          ctx.moveTo(bx - s, highwayCy - s); ctx.lineTo(bx + s, highwayCy + s);
+          ctx.moveTo(bx + s, highwayCy - s); ctx.lineTo(bx - s, highwayCy + s);
+          ctx.stroke();
+        }
+
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ── Header: phase label, BPM, timer ─────────────────────────────────
+    const headerCy = headerH / 2;
+
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle    = COL_DIM;
+    ctx.font         = `bold ${Math.max(13, W * 0.036)}px sans-serif`;
+    ctx.fillText(phase.label, W / 2, headerCy - 9);
+    ctx.font      = `${Math.max(11, W * 0.026)}px sans-serif`;
+    ctx.fillStyle = '#6666aa';
+    ctx.fillText(`${bpm} BPM  ·  Phase ${this._currentPhase + 1} / ${PHASES.length}`, W / 2, headerCy + 9);
+
+    const remaining = Math.max(0, Math.ceil(TOTAL_DURATION - elapsed));
+    ctx.textAlign = 'right';
+    ctx.font      = `bold ${Math.max(15, W * 0.042)}px sans-serif`;
+    ctx.fillStyle = remaining <= 5 ? '#ff6644' : COL_TEXT;
+    ctx.fillText(`${remaining}s`, W * 0.96, headerCy);
+
+    // ── Feedback text (below highway) ────────────────────────────────────
+    const feedY = highwayBot + (H - highwayBot) * 0.38;
     if (this._feedback) {
       const age   = performance.now() - this._feedback.time;
       const alpha = Math.max(0, 1 - age / FEEDBACK_FADE_MS);
       if (alpha > 0) {
         ctx.globalAlpha  = alpha;
-        ctx.fillStyle    = this._feedback.color;
-        ctx.font         = `bold ${Math.max(20, W * 0.07)}px sans-serif`;
+        ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(this._feedback.text, W / 2, H * 0.58);
+        ctx.fillStyle    = this._feedback.color;
+        ctx.font         = `bold ${Math.max(28, Math.min(48, W * 0.1))}px sans-serif`;
+        ctx.fillText(this._feedback.text, W / 2, feedY);
         ctx.globalAlpha  = 1;
       }
     }
 
-    // ── Accuracy bar (bottom strip) — last 8 taps ───────────────────────
-    const barY   = H * 0.78;
-    const sqSize = Math.min(W * 0.08, 36);
-    const gap    = sqSize * 0.3;
-    const totalW = HISTORY_SIZE * sqSize + (HISTORY_SIZE - 1) * gap;
-    let barX     = (W - totalW) / 2;
-
-    ctx.textBaseline = 'top';
-    ctx.font         = `${Math.max(10, W * 0.025)}px sans-serif`;
+    // ── Live stats (bottom of below-highway area) ─────────────────────────
+    const statsY = highwayBot + (H - highwayBot) * 0.76;
+    const total  = this._perfects + this._oks + this._misses;
+    const pct    = total > 0 ? Math.round((this._perfects / total) * 100) : 0;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
     ctx.fillStyle    = COL_DIM;
-    ctx.fillText('Last 8 taps', W / 2, barY - sqSize * 0.6);
-
-    for (let i = 0; i < HISTORY_SIZE; i++) {
-      const result = this._history[i];
-      if (result === 'perfect')    ctx.fillStyle = COL_PERFECT;
-      else if (result === 'ok')    ctx.fillStyle = COL_OK;
-      else if (result === 'miss')  ctx.fillStyle = COL_MISS;
-      else                         ctx.fillStyle = '#2a2a3e'; // empty slot
-      const rx = barX + i * (sqSize + gap);
-      ctx.fillRect(rx, barY, sqSize, sqSize);
-      // Rounded corner effect
-      ctx.strokeStyle = '#3a3a5e';
-      ctx.lineWidth   = 1;
-      ctx.strokeRect(rx, barY, sqSize, sqSize);
-    }
-
-    // ── Bottom left: perfect% ───────────────────────────────────────────
-    const total = this._perfects + this._oks + this._misses;
-    const pct   = total > 0 ? Math.round((this._perfects / total) * 100) : 0;
-    ctx.textAlign    = 'left';
-    ctx.textBaseline = 'bottom';
-    ctx.fillStyle    = COL_TEXT;
-    ctx.font         = `bold ${Math.max(14, W * 0.035)}px sans-serif`;
-    ctx.fillText(`Perfect: ${pct}%`, W * 0.05, H * 0.95);
-
-    // ── Bottom right: time remaining ────────────────────────────────────
-    const remaining = Math.max(0, Math.ceil(TOTAL_DURATION - elapsed));
-    ctx.textAlign    = 'right';
-    ctx.fillStyle    = remaining <= 5 ? '#ff6644' : COL_TEXT;
-    ctx.fillText(`${remaining}s`, W * 0.95, H * 0.95);
-
-    // ── Bottom center: score ────────────────────────────────────────────
-    ctx.textAlign = 'center';
-    ctx.fillStyle = COL_DIM;
-    ctx.font      = `${Math.max(12, W * 0.028)}px sans-serif`;
+    ctx.font         = `${Math.max(11, W * 0.027)}px sans-serif`;
     ctx.fillText(
-      `${this._perfects} perfect · ${this._oks} ok · ${this._misses} miss`,
-      W / 2, H * 0.95
+      `${pct}% perfect  ·  ${this._perfects} perfect  ·  ${this._oks} ok  ·  ${this._misses} miss`,
+      W / 2, statsY
     );
   }
 }
