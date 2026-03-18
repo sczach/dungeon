@@ -52,6 +52,7 @@ import { wireSettingsUI }                           from './ui/screens.js';
 import { minigameEngine }                          from './systems/minigameEngine.js';
 import { MetronomeMastery }                        from './minigames/metronomeMastery.js';
 import { RhythmChallenge }                         from './minigames/rhythmChallenge.js';
+import { CallResponse }                            from './minigames/callResponse.js';
 
 // Re-export SCENE for callers that import from game.js
 export { SCENE };
@@ -59,6 +60,7 @@ export { SCENE };
 // ── Register minigame types ─────────────────────────────────────────────────
 minigameEngine.register('metronome-mastery', MetronomeMastery);
 minigameEngine.register('rhythm-challenge',  RhythmChallenge);
+minigameEngine.register('call-response',     CallResponse);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase system
