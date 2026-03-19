@@ -341,6 +341,14 @@ export class AttackSequenceSystem {
   }
 
   /**
+   * Public wrapper — fire a lightning bolt between two points.
+   * Used by game.js _applyStaffEffects() for staff queue kills.
+   */
+  fireBoltAt(x1, y1, x2, y2, state, chargeLevel = 0) {
+    this._fireBolt(x1, y1, x2, y2, state, chargeLevel);
+  }
+
+  /**
    * Push a floating damage number into state.damageNumbers.
    * @param {number} x @param {number} y — world position
    * @param {number} value — numeric damage, or 0 for label-only

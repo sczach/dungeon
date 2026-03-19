@@ -49,6 +49,7 @@ import {
 } from './audio/soundEngine.js';
 import { applyLesson }                             from './data/lessons.js';
 import { WAVES }                                   from './systems/waves.js';
+import { staffQueueSystem }                        from './systems/staffQueue.js';
 import { wireSettingsUI }                           from './ui/screens.js';
 import { minigameEngine }                          from './systems/minigameEngine.js';
 import { MetronomeMastery }                        from './minigames/metronomeMastery.js';
@@ -876,6 +877,7 @@ function startGame(levelConfig) {
   attackSequenceSystem.reset(state);
   cueSystem.reset(state);
   promptManager.reset();
+  staffQueueSystem.reset(state);
 
   // Announce Wave 1
   state.waveAnnounce = performance.now();
@@ -910,7 +912,7 @@ function startGame(levelConfig) {
   _prevPlayerHp     = Infinity;
   _prevModeAnnounce = 0;
 
-  keyboardInput.start(state, tablatureSystem, attackSequenceSystem, cueSystem);
+  keyboardInput.start(state, tablatureSystem, attackSequenceSystem, cueSystem, staffQueueSystem);
   setScene(SCENE.PLAYING);
   startSoundEngine(state);
 }
@@ -1007,6 +1009,7 @@ function spawnEnemyUnit() {
     // (damage buff applies to player units only — enemy units are untouched)
   }
   attackSequenceSystem.assignSequence(unit);
+  staffQueueSystem.enqueueAttack(unit, state);
   state.units.push(unit);
 }
 
@@ -1119,6 +1122,98 @@ function spawnPlayerUnit(tier, free = false, unitType = null) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Staff queue effect handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Apply effect descriptors returned by staffQueueSystem.update() or .onNote().
+ * This is where staff queue events translate into game state mutations.
+ *
+ * @param {Array<{type: string, data: object}>} effects
+ * @param {object} state
+ */
+function _applyStaffEffects(effects, state) {
+  for (let i = 0; i < effects.length; i++) {
+    const { type, data } = effects[i];
+
+    switch (type) {
+      case 'kill': {
+        // Lightning bolt kill on the targeted enemy
+        const unit = data.targetUnit;
+        if (unit && unit.alive) {
+          unit.hp = 0;
+          unit.alive = false;
+          // Fire lightning bolt visual
+          attackSequenceSystem.fireBoltAt(
+            state.playerBase.x, state.playerBase.y,
+            unit.x, unit.y, state
+          );
+          // Score + resources
+          const tier = data.tier || 1;
+          state.score += tier * 100;
+          state.resources = Math.min(200, state.resources + [0, 20, 30, 50][tier]);
+          state.waveEnemiesKilled++;
+          onGameEvent('kill');
+          // Kill melody
+          const melodyNotes = state.staffQueue.notes
+            .filter(n => n.groupId === data.groupId && n.status === 'hit')
+            .map(n => n.note);
+          if (melodyNotes.length >= 2) {
+            playSuccessKill(melodyNotes);
+          }
+        }
+        break;
+      }
+
+      case 'summon': {
+        // Determine unit type from first note of the summon group
+        const noteToType = {
+          'C3': 'tank', 'D3': 'tank',
+          'E3': 'dps',  'F3': 'dps',
+          'G3': 'ranged', 'A3': 'ranged',
+          'B3': 'mage',
+        };
+        const unitType = noteToType[data.firstNote] ?? 'tank';
+        spawnPlayerUnit(1, false, unitType);
+        onGameEvent('spawn');
+        break;
+      }
+
+      case 'directAttack': {
+        // Miss-based direct attack (same as existing attack mode miss)
+        // Find nearest alive enemy
+        let nearest = null;
+        let nearDist = Infinity;
+        for (let j = 0; j < state.units.length; j++) {
+          const u = state.units[j];
+          if (u.team === 'enemy' && u.alive) {
+            const d = u.x - state.playerBase.x;
+            if (d < nearDist) { nearDist = d; nearest = u; }
+          }
+        }
+        const target = nearest || state.enemyBases.find(b => !b.isDestroyed());
+        if (target) {
+          const accuracy = Math.max(0.1, 1 - (data.misses || 0) * 0.05);
+          const dmg = Math.round(15 * accuracy * 0.5);  // half damage on miss
+          if (target.hp != null) {
+            target.hp = Math.max(0, target.hp - dmg);
+            if (target.hp <= 0) target.alive = false;
+          } else if (typeof target.takeDamage === 'function') {
+            target.takeDamage(dmg);
+          }
+          // Fire bolt visual
+          attackSequenceSystem.fireBoltAt(
+            state.playerBase.x, state.playerBase.y,
+            target.x, target.y, state
+          );
+        }
+        break;
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main loop
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1201,6 +1296,17 @@ function update(dt) {
       attackSequenceSystem.update(dt, state);
       cueSystem.update(dt, state);
       promptManager.update(dt, state);
+
+      // ── Staff queue update (new unified system) ─────────────────────────
+      {
+        const effects = staffQueueSystem.update(dt, state);
+        _applyStaffEffects(effects, state);
+      }
+      // ── Drain pending effects from keyboard note input ─────────────────
+      if (state.staffQueue?._pendingEffects?.length > 0) {
+        _applyStaffEffects(state.staffQueue._pendingEffects, state);
+        state.staffQueue._pendingEffects.length = 0;
+      }
 
       // ── Mode indicator tracking (Fix 4) ──────────────────────────────────
       if (state.inputMode === 'attack') {

@@ -182,12 +182,13 @@ export class KeyboardInput {
    * @param {import('../systems/attackSequence.js').AttackSequenceSystem} attackSeqSystem
    * @param {import('../systems/cueSystem.js').CueSystem}                 cueSystem
    */
-  start(state, tablatureSystem, attackSeqSystem, cueSystem) {
+  start(state, tablatureSystem, attackSeqSystem, cueSystem, staffQueueSys) {
     this.stop();
     this._state        = state;
     this._tablature    = tablatureSystem;
     this._attackSeq    = attackSeqSystem;
     this._cue          = cueSystem ?? null;
+    this._staffQueue   = staffQueueSys ?? null;
     this._handler      = (e) => this._onKeyDown(e);
     this._keyUpHandler = (e) => this._onKeyUp(e);
     document.addEventListener('keydown', this._handler);
@@ -333,11 +334,21 @@ export class KeyboardInput {
     }
     // 3. Tone
     try { playTone(note); } catch (_) {}
-    // 4. Route by mode
-    if (state.inputMode === 'summon') {
-      if (this._tablature) this._tablature.onNote(note, state);
+    // 4. Route through staff queue (new unified system)
+    if (this._staffQueue && state.staffQueue && state.staffQueue.notes.length > 0) {
+      const effects = this._staffQueue.onNote(note, state);
+      if (effects.length > 0) {
+        // Store effects for game.js to drain next frame
+        if (!state.staffQueue._pendingEffects) state.staffQueue._pendingEffects = [];
+        state.staffQueue._pendingEffects.push(...effects);
+      }
     } else {
-      if (this._attackSeq) this._attackSeq.onNote(note, state);
+      // Fallback to legacy routing when staff queue is empty/absent
+      if (state.inputMode === 'summon') {
+        if (this._tablature) this._tablature.onNote(note, state);
+      } else {
+        if (this._attackSeq) this._attackSeq.onNote(note, state);
+      }
     }
     // 3b. Cue system always active (awards +10 on hit, +3 on free play)
     if (this._cue) this._cue.onNote(note, state);

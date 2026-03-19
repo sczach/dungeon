@@ -84,11 +84,12 @@ export class StaffQueueSystem {
    */
   createState() {
     return {
-      notes: [],         // [{note, purpose, groupId, status, statusTime}]
-      combo: 0,          // consecutive correct notes
-      chargeLevel: 0,    // 0.0 – 3.0
+      notes: [],            // [{note, purpose, groupId, status, statusTime}]
+      combo: 0,             // consecutive correct notes
+      chargeLevel: 0,       // 0.0 – 3.0
       totalHits: 0,
       totalMisses: 0,
+      _pendingEffects: [],  // effects from keyboard input, drained by game.js each frame
     };
   }
 
