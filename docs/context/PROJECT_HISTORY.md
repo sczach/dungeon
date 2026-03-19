@@ -280,3 +280,9 @@ Phase 2B began in earnest with the creation of the minigame engine (MinigameEngi
 ## 2026-03-19 — Environment maintenance: git worktree cleanup and Stop hook
 
 No game code was modified this session. The focus was entirely on Claude Code environment hygiene: nine stale git worktree refs were pruned from the repo, four physical stale worktree directories were deleted, a reusable prune script was created at `~/.claude/scripts/prune-worktrees.sh`, and the global `~/.claude/settings.json` Stop hook was updated to run that script automatically at the end of every session. Five locked directories could not be deleted due to active process handles and will release on reboot. A standing workflow requirement was identified: worktree pruning must be embedded as an explicit named step in both /resume and /wrap-up to prevent silent disk accumulation from agent worktrees.
+
+---
+
+## 2026-03-19 — Session command infrastructure: worktree accessibility and hygiene
+
+No game code was modified. Both `/resume` and `/wrap-up` were updated to be accessible from any git worktree: the files were confirmed present in the repo-root `.claude/commands/` directory (tracked by git, available to all worktree branches), and a fallback note was added to `resume.md` instructing agents to read `wrap-up.md` directly via the Read tool if the slash command fails to resolve. Worktree hygiene was baked into both commands as a mandatory named step: `resume` now opens with a prune-and-inspect step (Step 1) that runs `git worktree prune`, lists active worktrees, checks for orphaned physical directories with an uncommitted-work safety gate, and reports disk usage; `wrap-up` now closes with a cleanup step (Step 5) that repeats the prune, removes the session worktree only after a confirmed push and only if the branch is merged or abandoned, and enforces a zero-stale-refs exit condition so the next agent always inherits a clean environment.

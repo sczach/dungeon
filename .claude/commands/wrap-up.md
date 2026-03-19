@@ -1,5 +1,11 @@
 # Session Wrap-Up
 
+<!-- LOCATION: This file must live at <repo-root>/.claude/commands/wrap-up.md
+     (e.g. C:\Users\wbryk\OneDrive\Desktop\Chordwars\.claude\commands\wrap-up.md)
+     so that it is accessible from git worktrees checked out under .claude/worktrees/.
+     Do not move it to a worktree-local path only — changes here must also be committed
+     on the master branch so every future worktree inherits the file. -->
+
 Follow these steps in order. Do not skip any step. Do not write any files until Step 3.
 
 ---
@@ -95,6 +101,42 @@ Report the push result. If it fails for any other reason, stop and inform the us
 
 ---
 
-## Step 5 — State the next session's first task
+## Step 5 — Worktree cleanup
+
+Run only after Step 4 push is confirmed successful (work is safe on remote).
+
+**5a. Prune and list:**
+```bash
+git worktree prune
+git worktree list
+```
+Report the output.
+
+**5b. Remove this session's worktree if the branch is merged or the PR is closed:**
+```bash
+git worktree remove --force .claude/worktrees/<name>
+```
+Only do this if: push succeeded AND (branch is merged into master OR branch is being
+abandoned). Do NOT remove if the branch has an open unmerged PR.
+
+**5c. Check for any remaining orphans:**
+```bash
+ls .claude/worktrees/ 2>/dev/null || echo "(none)"
+```
+For each dir not in `git worktree list`: confirm clean status, then
+`git worktree remove --force .claude/worktrees/<name>`.
+
+**5d. Report final disk usage:**
+```bash
+du -sh .claude/worktrees/ 2>/dev/null || echo "(no worktrees directory)"
+```
+
+> **Exit condition: zero stale refs, zero orphaned directories.**
+> If you cannot achieve this (locked handles, uncommitted work), report exactly what
+> remains and why, so the next agent knows what to clean up.
+
+---
+
+## Step 6 — State the next session's first task
 
 In one sentence: the single highest-priority action for the next Claude Code session, and which files it would primarily touch.

@@ -1,6 +1,53 @@
 # Handoff Notes — 2026-03-19
 
 ## Current phase
+Phase 2B — Minigame Engine + content expansion (active). No game changes this session — session command and worktree hygiene infrastructure.
+
+## What is working
+- All items from previous 2026-03-19 session remain unchanged
+- `/resume` and `/wrap-up` are now accessible from any worktree (both repo-root and worktree copies updated)
+- Worktree hygiene is now a mandatory named step in both `/resume` (Step 1) and `/wrap-up` (Step 5)
+
+## What is broken or in progress
+- `feat/add-session-commands` branch still needs assessment — 20+ commits ahead of local master; remote merge state unconfirmed
+- `.obsidian/*.json` files perpetually modified — never commit
+- Disk at or near capacity — 5 stale worktree dirs remained locked as of previous session (may have released on reboot)
+- Repo-root master working tree has **uncommitted** edits to `.claude/commands/resume.md` and `wrap-up.md` (same content as this PR) — after this branch merges, discard with: `git checkout -- .claude/commands/resume.md .claude/commands/wrap-up.md`
+
+## What was done this session
+- `.claude/commands/resume.md` (worktree + repo-root) — added "Worktree note" section; added Step 1 (worktree hygiene: prune refs, list worktrees, orphan check with safety gate, disk report); renumbered old steps 1–4 → 2–5
+- `.claude/commands/wrap-up.md` (worktree + repo-root) — added LOCATION header comment; added Step 5 (worktree cleanup: prune, remove session worktree if merged/abandoned, orphan check, disk report, explicit exit condition); renumbered old Step 5 → Step 6
+
+## Approaches that failed
+- None this session
+
+## Open PRs
+- `claude/charming-agnesi` → session command + worktree hygiene improvements → open at github.com/sczach/chordwars/pull/new/claude/charming-agnesi
+- `feat/add-session-commands` → earlier session command improvements → check https://github.com/sczach/chordwars for current PR status
+
+## Next session should
+1. **Merge `claude/charming-agnesi`** (this PR) — then on master: `git checkout -- .claude/commands/resume.md .claude/commands/wrap-up.md` to discard the duplicate local edits
+2. **Assess `feat/add-session-commands`** — `git log master..feat/add-session-commands` to confirm whether PRs #41–#48 are on remote master; merge if not
+3. Playtest rhythm-3/4/5 (Rhythm Challenge) and the Call & Response minigame
+4. Begin next minigame: theory-1 (note recognition — hear a note, identify it)
+5. Fix Crossing difficulty (too hard on Easy) — `src/data/levels.js`
+
+## Source files most likely needed next session
+- `src/minigames/rhythmChallenge.js` — if tuning rhythm patterns
+- `src/minigames/callResponse.js` — if tuning ear training
+- `src/data/worldMap.js` — next region/minigame wiring
+- `src/data/levels.js` — Crossing difficulty fix
+- `src/game.js` — new minigame registration
+
+## Vault files that need updating
+- `DECISIONS.md` — remove two stale Known Bugs entries (fixed 2026-03-17)
+- `GAME_SYSTEMS.md` — add Minigame Engine section, note rhythm region now live
+
+---
+
+# Handoff Notes — 2026-03-19
+
+## Current phase
 Phase 2B — Minigame Engine + content expansion (active). No game changes this session — environment maintenance only.
 
 ## What is working
