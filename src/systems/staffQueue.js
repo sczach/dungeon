@@ -261,6 +261,9 @@ export class StaffQueueSystem {
       // Charge builds from consecutive correct notes
       sq.chargeLevel = Math.min(MAX_CHARGE, sq.chargeLevel + CHARGE_PER_HIT);
 
+      // Emit hit event for telemetry
+      effects.push({ type: 'noteHit', data: { note, combo: sq.combo } });
+
       // Check if this completes a group
       const gid = active.groupId;
       const groupNotes = sq.notes.filter(n => n.groupId === gid);

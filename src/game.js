@@ -50,6 +50,7 @@ import {
 import { applyLesson }                             from './data/lessons.js';
 import { WAVES }                                   from './systems/waves.js';
 import { staffQueueSystem }                        from './systems/staffQueue.js';
+import { telemetrySystem }                         from './systems/telemetry.js';
 import { wireSettingsUI }                           from './ui/screens.js';
 import { minigameEngine }                          from './systems/minigameEngine.js';
 import { MetronomeMastery }                        from './minigames/metronomeMastery.js';
@@ -461,6 +462,13 @@ function _handleVictory() {
   if (level?.id) {
     state.worldMap.lastPlayedNodeId = level.id;
   }
+
+  // Record telemetry
+  telemetrySystem.endSession({
+    won: true,
+    stars: state.starsEarned || 0,
+    accuracy: state.noteAccuracy || 0,
+  });
 
   // Always show VICTORY screen — player navigates back to world map themselves
   setScene(SCENE.VICTORY);
@@ -875,9 +883,11 @@ function startGame(levelConfig) {
   cueSystem.reset(state);
   promptManager.reset();
   staffQueueSystem.reset(state);
+  telemetrySystem.startSession(state.levelId || 'unknown', state.difficulty);
 
   // Announce Wave 1
   state.waveAnnounce = performance.now();
+  telemetrySystem.record('wave_start', { wave: 1 });
 
   // Set initial phase label — bases always start vulnerable (grace period handled per-wave)
   {
@@ -1134,7 +1144,13 @@ function _applyStaffEffects(effects, state) {
     const { type, data } = effects[i];
 
     switch (type) {
+      case 'noteHit': {
+        telemetrySystem.record('hit', { note: data.note, combo: data.combo });
+        break;
+      }
+
       case 'kill': {
+        telemetrySystem.record('kill', { tier: data.tier, groupId: data.groupId });
         // Lightning bolt kill on the targeted enemy
         const unit = data.targetUnit;
         if (unit && unit.alive) {
@@ -1163,6 +1179,7 @@ function _applyStaffEffects(effects, state) {
       }
 
       case 'summon': {
+        telemetrySystem.record('summon', { firstNote: data.firstNote, groupId: data.groupId });
         // Determine unit type from first note of the summon group
         const noteToType = {
           'C3': 'tank', 'D3': 'tank',
@@ -1177,6 +1194,7 @@ function _applyStaffEffects(effects, state) {
       }
 
       case 'directAttack': {
+        telemetrySystem.record('miss', { note: data.note });
         // Miss-based direct attack (same as existing attack mode miss)
         // Find nearest alive enemy
         let nearest = null;
@@ -1397,6 +1415,7 @@ function update(dt) {
               if (!state.enemyBases[bi].isDestroyed()) state.enemyBases[bi].vulnerable = false;
             }
           }
+          telemetrySystem.record('wave_start', { wave: state.wave });
           console.log(`[wave] overlap advance → wave ${state.wave}`);
         }
 
@@ -1414,6 +1433,7 @@ function update(dt) {
           state.enemySpawnInterval = Math.max(0.3, wCfg.spawnInterval * (state._waveDiffMult || 1));
           state.waveOverlapping    = false;
           state.betweenWavesTimer  = 4;  // 4 s gap before next wave begins
+          telemetrySystem.record('wave_start', { wave: state.wave });
           console.log(`[wave] cleared → wave ${state.wave} (gap ${state.betweenWavesTimer}s)`);
         }
 
@@ -1553,6 +1573,7 @@ function update(dt) {
 
       // ── Win / lose ────────────────────────────────────────────────────────
       if (state.playerBase.isDestroyed()) {
+        telemetrySystem.endSession({ won: false, stars: 0, accuracy: 0 });
         setScene(SCENE.DEFEAT);
         break;
       }
@@ -1684,6 +1705,7 @@ initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) =
   state.inputMode    = mode;
   state.modeAnnounce = performance.now();
   if (mode === 'summon') tablatureSystem.refresh(state);
+  telemetrySystem.record('mode_switch', { mode });
   console.log(`[mode] tapped → ${mode}`);
 });
 

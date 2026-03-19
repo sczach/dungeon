@@ -7,6 +7,8 @@
  * Replaces the minimal wireSettingsUI() from screens.js.
  */
 
+import { telemetrySystem } from '../systems/telemetry.js';
+
 // ─── localStorage key ────────────────────────────────────────────────────────
 const LS_KEY = 'chordwars_settings';
 
@@ -332,6 +334,14 @@ export class SettingsUI {
         <span class="cw-label" style="font-size:10px;color:#6a6050">Cue gating in all modes</span>
       </div>
 
+      <hr class="cw-sep">
+
+      <div class="cw-row">
+        <span class="cw-label">Play Data</span>
+        <button id="cw-export-telemetry">Export JSON</button>
+        <button id="cw-clear-telemetry">Clear</button>
+      </div>
+
     `;
     document.body.appendChild(panel);
     this._panel = panel;
@@ -405,6 +415,15 @@ export class SettingsUI {
       console.log('[settings] hardcoreMode →', state.hardcoreMode);
     });
     this._refreshHardcoreMode(panel, state.hardcoreMode ?? DEFAULTS.hardcoreMode);
+
+    // Telemetry export / clear
+    panel.querySelector('#cw-export-telemetry').addEventListener('click', () => {
+      telemetrySystem.exportJSON();
+    });
+    panel.querySelector('#cw-clear-telemetry').addEventListener('click', () => {
+      telemetrySystem.clearAll();
+      console.log('[settings] telemetry data cleared');
+    });
 
     // Gear button toggles the panel
     const gearBtn = document.getElementById('btn-settings');
