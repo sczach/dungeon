@@ -1,0 +1,26 @@
+# Obsidian (all workspace state — machine-specific, never commit)
+.obsidian/
+
+# inbox (local scratch files)
+inbox/
+
+# Claude Code worktrees (transient — recreated each session)
+.claude/worktrees/
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json
+
+# Archives and installers (never belong in source control)
+*.rar
+*.zip
+*.exe
+*.dmg
+*.pkg
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node (if ever needed)
+node_modules/
