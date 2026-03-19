@@ -1,70 +1,44 @@
-# /resume — Session Start Command
+# Session Resume
 
-You are starting a Chord Wars development session.
-
-This command is READ ONLY. Do not write code, create files, or make
-any changes to the repo during this command. Only read and report.
-
-## Step 1 — Read vault files
-
-Attempt to read each file. If missing, write "[NOT FOUND]" and continue.
-Never fail the whole command because one file is missing.
-
-Files to read (try forward slashes if backslashes fail):
-- C:/Users/wbryk/OneDrive/Desktop/Chordwars/docs/context/HANDOFF.md
-- C:/Users/wbryk/OneDrive/Desktop/Chordwars/docs/context/DECISIONS.md
-- C:/Users/wbryk/OneDrive/Desktop/Chordwars/docs/context/GAME_SYSTEMS.md
-- C:/Users/wbryk/OneDrive/Desktop/Chordwars/docs/context/AUDIO_PIPELINE.md
-
-Do NOT read PROJECT_HISTORY.md or ARCHITECTURE.md during resume —
-they are too long and waste tokens. Only read them if explicitly asked.
-
-## Step 2 — Read git state
-
-Run these commands. If any fail, skip and continue:
-
-  git log --oneline -8
-  git status --short
-  git stash list
-
-Try `gh pr list --state open` only if gh is available.
-If it fails with "command not found", skip it entirely.
-
-## Step 3 — Output session briefing
-
-Output ONLY this structure. Be concise — this briefing should be
-readable in under 60 seconds. No padding, no repetition.
+Follow these steps in order at the start of every session. This step is read-only — do not modify any files during resume.
 
 ---
-## 🎮 Chord Wars — Session Briefing
 
-**Date of last session:** [from HANDOFF.md header, or "unknown"]
-**Current phase:** [from HANDOFF.md]
+## Step 0 — Pull before anything else
 
-### ✅ Working
-[3-5 bullets max — most important working systems only]
+Run `git pull` on the current branch. Report the result. If there are conflicts, stop and inform the user before proceeding.
 
-### 🔴 Broken / In Progress
-[every known issue — do not omit anything]
-
-### 📋 Recommended task this session
-[exact text from "Next session should" in HANDOFF.md]
-[if HANDOFF.md not found: "No handoff found — check PROJECT_HISTORY.md
-or describe what you were working on"]
-
-### 📁 Files likely needed
-[list src files relevant to recommended task]
-
-### 🌿 Git state
-[uncommitted changes if any]
-[last 5 commits one-line]
-[open PRs if gh available]
-
-### ⚠️ Vault gaps
-[list any vault files that were NOT FOUND]
-[suggest running /wrap-up if HANDOFF.md is missing or stale]
 ---
 
-After outputting the briefing, stop.
-Wait for the developer to give the first task.
-Do not propose tasks, do not start coding.
+## Step 1 — Read the handoff log
+
+Read `docs/context/HANDOFF.md`. The file is a running log with the newest entry at the top. Summarise only the top entry. Do not summarise older entries unless the user asks.
+
+Report the following from that entry:
+- Current phase
+- What is confirmed working
+- What is broken or in progress
+- Open PRs and their merge status
+- The numbered priority list for this session
+
+---
+
+## Step 2 — Read the project history (one paragraph only)
+
+Read the last paragraph of `docs/context/PROJECT_HISTORY.md` and report it in one sentence. This gives a sense of momentum without re-reading the full history.
+
+---
+
+## Step 3 — Confirm the starting state
+
+State clearly:
+- Which branch is currently checked out
+- Whether there are any uncommitted local changes (`git status`)
+- Whether any PRs from the previous handoff are still open
+  (based on what the handoff says — you cannot query GitHub directly)
+
+---
+
+## Step 4 — Propose the first task
+
+Based on the handoff's "Next session should" list, propose the first task. Ask the user to confirm or redirect before writing a single line of code.
