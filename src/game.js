@@ -48,6 +48,7 @@ import {
   onGameEvent,
 } from './audio/soundEngine.js';
 import { applyLesson }                             from './data/lessons.js';
+import { WAVES }                                   from './systems/waves.js';
 import { wireSettingsUI }                           from './ui/screens.js';
 import { minigameEngine }                          from './systems/minigameEngine.js';
 import { MetronomeMastery }                        from './minigames/metronomeMastery.js';
@@ -852,19 +853,20 @@ function startGame(levelConfig) {
   const skillResourceBonus = state.resources - 200;   // delta from default
   state.resources = level.startResources + skillResourceBonus;
 
-  // Apply difficulty to spawn interval — new dense-wave system
-  // Easy=2s, Medium=1.5s, Hard=1s between individual enemy spawns
-  const DIFF_INTERVALS = { easy: 2, medium: 1.5, hard: 1 };
-  const baseInterval   = DIFF_INTERVALS[state.difficulty] ?? 1.5;
-  state.enemySpawnInterval = Math.max(0.5, baseInterval + (state.skillSpawnIntervalBonus || 0));
-  state.enemySpawnTimer    = 0;   // first enemy spawns on the very first update tick
+  // Spawn interval now comes from the WAVES table (per-wave pacing).
+  // Difficulty applies a multiplier: Easy ×1.5 (slower), Medium ×1.0, Hard ×0.7 (faster).
+  const DIFF_MULT = { easy: 1.5, medium: 1.0, hard: 0.7 };
+  state._waveDiffMult      = DIFF_MULT[state.difficulty] ?? 1.0;
+  state.enemySpawnInterval = Math.max(0.3, WAVES[0].spawnInterval * state._waveDiffMult
+                             + (state.skillSpawnIntervalBonus || 0));
+  state.enemySpawnTimer    = 0;   // first enemy spawns after grace period ends
 
-  // Initialise wave density fields
+  // Initialise wave density fields — use WAVES table for per-wave enemy count
   state.waveEnemiesSpawned = 0;
   state.waveEnemiesKilled  = 0;
-  state.waveSize           = 8;   // minimum 8 enemies per wave
+  state.waveSize           = WAVES[0].enemyCount;   // wave 1 count from table
   state.waveOverlapping    = false;
-  state.betweenWavesTimer  = 0;   // 0 = start spawning immediately (no opening gap)
+  state.betweenWavesTimer  = 5;   // 5 s grace period so player can orient before wave 1
 
   // Attach level-as-lesson content (sets state.currentLesson)
   applyLesson(state, level.id);
@@ -1287,7 +1289,9 @@ function update(dt) {
           state.waveAnnounce      = performance.now();
           state.waveEnemiesSpawned = 0;
           state.waveEnemiesKilled  = 0;
-          state.waveSize           = Math.max(8, state.waveSize);
+          const wCfg = WAVES[Math.min(state.wave - 1, WAVES.length - 1)];
+          state.waveSize           = wCfg.enemyCount;
+          state.enemySpawnInterval = Math.max(0.3, wCfg.spawnInterval * (state._waveDiffMult || 1));
           state.waveOverlapping    = true;
           state.betweenWavesTimer  = 0;
           // Brief base invulnerability on each wave advance (non-survival levels)
@@ -1309,9 +1313,11 @@ function update(dt) {
           state.waveAnnounce      = performance.now();
           state.waveEnemiesSpawned = 0;
           state.waveEnemiesKilled  = 0;
-          state.waveSize           = Math.max(8, state.waveSize);
+          const wCfg = WAVES[Math.min(state.wave - 1, WAVES.length - 1)];
+          state.waveSize           = wCfg.enemyCount;
+          state.enemySpawnInterval = Math.max(0.3, wCfg.spawnInterval * (state._waveDiffMult || 1));
           state.waveOverlapping    = false;
-          state.betweenWavesTimer  = 4;  // max 4 s gap before next wave begins
+          state.betweenWavesTimer  = 4;  // 4 s gap before next wave begins
           console.log(`[wave] cleared → wave ${state.wave} (gap ${state.betweenWavesTimer}s)`);
         }
 
