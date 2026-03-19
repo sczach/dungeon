@@ -268,3 +268,21 @@ Both JS files are now syntactically valid (node resolves only import errors, no 
 - `claude/pedantic-kilby` and `claude/cranky-bhaskara` still unmerged (audio fixes + balance fixes)
 - Mic detection on real device still unconfirmed
 - Hub-gated stub nodes (`tone-1` through `tone-6`) still unreachable (`isNodeUnlocked()` bug)
+
+---
+
+## 2026-03-18 (session 2) — Phase 2B: Minigame engine, rhythm region, TD gameplay redesign
+
+Phase 2B began in earnest with the creation of the minigame engine (MinigameEngine registry + BaseMinigame base class in src/systems/minigameEngine.js), followed by three full minigame implementations: Metronome Mastery (rhythm tapping with lookahead scheduler and scrolling highway visual), Rhythm Challenge (3-round pattern-reading minigame), and Call & Response (ear-training echo-back game). The tone region received six playable levels (tone-1 through tone-6) and the rhythm region was wired with rhythm-1/2 launching Metronome Mastery and rhythm-3/4/5 targeting Rhythm Challenge. A major tower-defense gameplay redesign replaced per-enemy floating cue pills with a unified musical staff notation system (staffQueue.js + staffRenderer.js), rebalanced waves using an explicit 10-entry WAVES table with difficulty multipliers, removed the CHARGE input mode in favor of combo-based charge, added a mobile landscape orientation lock, and introduced a telemetry system (src/systems/telemetry.js) for gameplay data collection with export/clear controls in the Settings panel. PRs #41 through #48 were merged across these changes, with the final PR covering the full TD redesign including wave rebalancing, staff notation, mode simplification, landscape lock, telemetry, and AI Engine documentation updates.
+
+---
+
+## 2026-03-19 — Environment maintenance: git worktree cleanup and Stop hook
+
+No game code was modified this session. The focus was entirely on Claude Code environment hygiene: nine stale git worktree refs were pruned from the repo, four physical stale worktree directories were deleted, a reusable prune script was created at `~/.claude/scripts/prune-worktrees.sh`, and the global `~/.claude/settings.json` Stop hook was updated to run that script automatically at the end of every session. Five locked directories could not be deleted due to active process handles and will release on reboot. A standing workflow requirement was identified: worktree pruning must be embedded as an explicit named step in both /resume and /wrap-up to prevent silent disk accumulation from agent worktrees.
+
+---
+
+## 2026-03-19 — Session command infrastructure: worktree accessibility and hygiene
+
+No game code was modified. Both `/resume` and `/wrap-up` were updated to be accessible from any git worktree: the files were confirmed present in the repo-root `.claude/commands/` directory (tracked by git, available to all worktree branches), and a fallback note was added to `resume.md` instructing agents to read `wrap-up.md` directly via the Read tool if the slash command fails to resolve. Worktree hygiene was baked into both commands as a mandatory named step: `resume` now opens with a prune-and-inspect step (Step 1) that runs `git worktree prune`, lists active worktrees, checks for orphaned physical directories with an uncommitted-work safety gate, and reports disk usage; `wrap-up` now closes with a cleanup step (Step 5) that repeats the prune, removes the session worktree only after a confirmed push and only if the branch is merged or abandoned, and enforces a zero-stale-refs exit condition so the next agent always inherits a clean environment.
