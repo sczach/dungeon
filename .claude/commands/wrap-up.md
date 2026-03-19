@@ -63,17 +63,35 @@ Append a single concise paragraph to `docs/context/PROJECT_HISTORY.md` summarisi
 
 ---
 
-## Step 4 — Suggest a commit message
+## Step 4 — Commit and push
 
-Write a conventional-commit-style message:
+Stage and commit everything, then push. The commit must always include HANDOFF.md and PROJECT_HISTORY.md alongside any code changes.
 
+Use a conventional-commit message in this format:
+
+```
 type(scope): short description
 
 - bullet detail 1
 - bullet detail 2
 - bullet detail 3
+```
 
-Use type: fix, feat, refactor, style, chore, or docs. The commit must include HANDOFF.md and PROJECT_HISTORY.md alongside any code changes.
+Types: fix, feat, refactor, style, chore, docs.
+
+Run in order:
+```bash
+git add -A
+git commit -m "type(scope): description"
+git push
+```
+
+If `git push` fails because the remote branch doesn't exist yet, run:
+```bash
+git push -u origin HEAD
+```
+
+Report the push result. If it fails for any other reason, stop and inform the user.
 
 ---
 
