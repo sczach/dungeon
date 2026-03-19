@@ -48,7 +48,7 @@ export const LEVELS = Object.freeze([
     icon:           '🔥',
     maxWaves:       7,
     difficultyMod:  0.8,    // enemy HP ×0.8 — softer introduction
-    spawnMod:       1.25,   // retained for data compat; interval now set by difficulty
+    spawnMod:       1.25,   // enemies spawn 25% slower (single-lane intro, extra breathing room)
     startResources: 250,    // extra starting gold
     maxEnemyCap:    12,
     unlockRequires: null,   // always available
@@ -71,9 +71,9 @@ export const LEVELS = Object.freeze([
     subtitle:       'Hold the bridge',
     icon:           '⚔️',
     maxWaves:       10,
-    difficultyMod:  1.0,
-    spawnMod:       1.0,
-    startResources: 200,
+    difficultyMod:  0.85,   // two-lane pressure compensated — enemies slightly squishier
+    spawnMod:       1.5,    // enemies spawn 50% slower than standard (two lanes = double pressure)
+    startResources: 250,    // match Campfire — player needs gold to cover both lanes early
     maxEnemyCap:    12,
     unlockRequires: 'campfire',
     starThresholds: [0, 70, 90],  // 1★: any win; 2★: ≥70% accuracy; 3★: ≥90%

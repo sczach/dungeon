@@ -861,9 +861,11 @@ function startGame(levelConfig) {
 
   // Spawn interval now comes from the WAVES table (per-wave pacing).
   // Difficulty applies a multiplier: Easy ×1.5 (slower), Medium ×1.0, Hard ×0.7 (faster).
+  // level.spawnMod further scales the interval (>1 = slower = easier; used on multi-lane levels).
   const DIFF_MULT = { easy: 1.5, medium: 1.0, hard: 0.7 };
   state._waveDiffMult      = DIFF_MULT[state.difficulty] ?? 1.0;
   state.enemySpawnInterval = Math.max(0.3, WAVES[0].spawnInterval * state._waveDiffMult
+                             * (level.spawnMod ?? 1.0)
                              + (state.skillSpawnIntervalBonus || 0));
   state.enemySpawnTimer    = 0;   // first enemy spawns after grace period ends
 
@@ -1405,7 +1407,7 @@ function update(dt) {
           state.waveEnemiesKilled  = 0;
           const wCfg = WAVES[Math.min(state.wave - 1, WAVES.length - 1)];
           state.waveSize           = wCfg.enemyCount;
-          state.enemySpawnInterval = Math.max(0.3, wCfg.spawnInterval * (state._waveDiffMult || 1));
+          state.enemySpawnInterval = Math.max(0.3, wCfg.spawnInterval * (state._waveDiffMult || 1) * (lvl?.spawnMod ?? 1.0));
           state.waveOverlapping    = true;
           state.betweenWavesTimer  = 0;
           // Brief base invulnerability on each wave advance (non-survival levels)
@@ -1430,7 +1432,7 @@ function update(dt) {
           state.waveEnemiesKilled  = 0;
           const wCfg = WAVES[Math.min(state.wave - 1, WAVES.length - 1)];
           state.waveSize           = wCfg.enemyCount;
-          state.enemySpawnInterval = Math.max(0.3, wCfg.spawnInterval * (state._waveDiffMult || 1));
+          state.enemySpawnInterval = Math.max(0.3, wCfg.spawnInterval * (state._waveDiffMult || 1) * (lvl?.spawnMod ?? 1.0));
           state.waveOverlapping    = false;
           state.betweenWavesTimer  = 4;  // 4 s gap before next wave begins
           telemetrySystem.record('wave_start', { wave: state.wave });
