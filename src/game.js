@@ -1867,6 +1867,9 @@ function _handleWorldMapClick(x, y) {
   }
 }
 
+// ── Request landscape orientation on mobile ──────────────────────────────────
+screen.orientation?.lock?.('landscape').catch(() => {});
+
 requestAnimationFrame((ts) => {
   lastTimestamp = ts;
   requestAnimationFrame(loop);

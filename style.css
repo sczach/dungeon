@@ -770,3 +770,37 @@ body[data-scene="PLAYING"] #screen-hud {
     width: min(280px, 90vw);
   }
 }
+
+/* ── Portrait orientation overlay (mobile) ─────────────────────── */
+#rotate-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--clr-bg);
+  color: var(--clr-text);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  font-family: Georgia, serif;
+  text-align: center;
+  padding: 2rem;
+}
+#rotate-overlay .rotate-icon {
+  font-size: 4rem;
+}
+#rotate-overlay .rotate-msg {
+  font-size: var(--fs-lg);
+  color: var(--clr-accent);
+}
+#rotate-overlay .rotate-sub {
+  font-size: var(--fs-sm);
+  color: var(--clr-muted);
+}
+
+@media (orientation: portrait) and (max-width: 768px) {
+  #rotate-overlay {
+    display: flex;
+  }
+}
