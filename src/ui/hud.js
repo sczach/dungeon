@@ -129,10 +129,9 @@ export function renderHUD(ctx, state, W, H) {
   ctx.fillStyle = PANEL_BG;
   ctx.fillRect(0, panelY, W, PANEL_H);
 
-  // Color-coded top border on the panel: blue=summon, red=attack, amber=charge
+  // Color-coded top border on the panel: blue=summon, red=attack
   const modeBorderColor = state.inputMode === 'summon' ? 'rgba(68,136,255,0.9)'
-    : state.inputMode === 'attack' ? 'rgba(255,80,80,0.9)'
-    : 'rgba(255,170,34,0.9)';
+    : 'rgba(255,80,80,0.9)';
   ctx.fillStyle = modeBorderColor;
   ctx.fillRect(0, panelY, W, 3);
 
@@ -149,21 +148,20 @@ export function renderHUD(ctx, state, W, H) {
   // Mode badge — top-right of panel row
   if (state.inputMode) {
     const mode  = state.inputMode;
-    const color = mode === 'summon' ? '#44ff88' : mode === 'attack' ? '#ff6666' : '#4488ff';
-    const label = mode === 'summon' ? '♪ SUMMON' : mode === 'attack' ? '⚔ ATTACK' : '⚡ CHARGE';
+    const color = mode === 'summon' ? '#44ff88' : '#ff6666';
+    const label = mode === 'summon' ? '♪ SUMMON' : '⚔ ATTACK';
     ctx.font      = 'bold 11px Georgia, serif';
     ctx.fillStyle = color;
     ctx.textAlign = 'right';
     ctx.fillText(label, W - PAD, hintY);
   }
 
-  // ── SUMMON / ATTACK / CHARGE mode toggle buttons (above piano, mobile-friendly) ──
+  // ── SUMMON / ATTACK mode toggle buttons (above piano, mobile-friendly) ──
   const modeBtnY  = H - PIANO_H - MODE_BTN_H;
   const curMode   = state.inputMode || 'summon';
   const ALL_MODES = [
     { id: 'summon', label: '♪  SUMMON', activeColor: '#44ff88', activeBg: 'rgba(68,255,136,0.18)' },
     { id: 'attack', label: '⚔  ATTACK', activeColor: '#ff6666', activeBg: 'rgba(255,80,80,0.18)'  },
-    { id: 'charge', label: '⚡  CHARGE', activeColor: '#4488ff', activeBg: 'rgba(68,136,255,0.18)' },
   ];
   // Filter to only the modes allowed by the current level (null = all three)
   const allowed   = state.allowedModes ?? null;
@@ -289,25 +287,23 @@ export function renderHUD(ctx, state, W, H) {
 /**
  * Return which mode button was tapped, or null if the point is outside.
  * Mode buttons span the full screen width above the piano:
- *   Left third   → 'summon'
- *   Middle third → 'attack'
- *   Right third  → 'charge'
+ *   Left half  → 'summon'
+ *   Right half → 'attack'
  *
  * @param {number} px  — x in logical (CSS) pixels
  * @param {number} py  — y in logical (CSS) pixels
  * @param {number} W   — logical canvas width
  * @param {number} H   — logical canvas height
- * @returns {'summon'|'attack'|'charge'|null}
+ * @returns {'summon'|'attack'|null}
  */
 export function getModeButtonAtPoint(px, py, W, H) {
   const modeBtnTop = H - PIANO_H - MODE_BTN_H;
   const modeBtnBot = H - PIANO_H;
   if (py < modeBtnTop || py >= modeBtnBot) return null;
   if (px < 0 || px > W) return null;
-  const btnW = W / 3;
-  if (px < btnW)     return 'summon';
-  if (px < btnW * 2) return 'attack';
-  return 'charge';
+  const btnW = W / 2;
+  if (px < btnW) return 'summon';
+  return 'attack';
 }
 
 /**

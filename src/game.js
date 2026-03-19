@@ -145,10 +145,7 @@ function createInitialState() {
     shakeTime:      0,       // performance.now() when shake started (0 = none)
     shakeIntensity: 0,       // px amplitude of shake
 
-    // ── Charge mechanic ───────────────────────
-    chargeNote:      null,   // string|null — note held in charge mode
-    chargeStartTime: 0,      // performance.now() when charge hold started
-    chargeProgress:  0,      // 0.0–3.0 (0.8 s per segment)
+    // ── Charge (combo-based, managed by staffQueue) ──
     waveGraceEnd:    0,      // state.time when wave grace period ends (bases invulnerable until then)
 
     // ── Note enforcement (attack mode cue gating) ─
@@ -170,7 +167,7 @@ function createInitialState() {
     currentCue:           null,        // {note, startTime, deadline, status} | null
 
     // ── Mode & settings ───────────────────────
-    inputMode:       'summon',   // 'summon' | 'attack' | 'charge' — toggled by Space
+    inputMode:       'summon',   // 'summon' | 'attack' — toggled by Space
     modeAnnounce:    0,          // performance.now() timestamp; 0 = none
     showNoteLabels:  false,      // overridden by loadSettings()
     difficulty:      'medium',   // overridden by loadSettings()
@@ -1319,13 +1316,6 @@ function update(dt) {
           && (state.time - state.lastAttackModeTime) > 5;
       }
 
-      // ── Charge progress (held-note mechanic) ──────────────────────────────
-      if (state.inputMode === 'charge' && state.chargeNote !== null) {
-        const elapsedSec     = (performance.now() - state.chargeStartTime) / 1000;
-        const stabilityMult  = state.audio.pitchStable ? 1.3 : 1.0;
-        state.chargeProgress = Math.min(3.0, (elapsedSec / 0.8) * stabilityMult);
-      }
-
       // ── Lightning bolt cleanup (remove expired bolts) ──────────────────
       {
         const nowMs = performance.now();
@@ -1694,10 +1684,6 @@ initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) =
   state.inputMode    = mode;
   state.modeAnnounce = performance.now();
   if (mode === 'summon') tablatureSystem.refresh(state);
-  if (mode !== 'charge') {
-    state.chargeNote     = null;
-    state.chargeProgress = 0;
-  }
   console.log(`[mode] tapped → ${mode}`);
 });
 
