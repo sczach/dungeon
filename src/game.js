@@ -56,14 +56,17 @@ import { minigameEngine }                          from './systems/minigameEngin
 import { MetronomeMastery }                        from './minigames/metronomeMastery.js';
 import { RhythmChallenge }                         from './minigames/rhythmChallenge.js';
 import { CallResponse }                            from './minigames/callResponse.js';
+import { ScaleRunner }                             from './minigames/scaleRunner.js';
 
 // Re-export SCENE for callers that import from game.js
 export { SCENE };
 
 // ── Register minigame types ─────────────────────────────────────────────────
+// Adding a new minigame: register it here → world map nodes with that gameType auto-activate.
 minigameEngine.register('metronome-mastery', MetronomeMastery);
 minigameEngine.register('rhythm-challenge',  RhythmChallenge);
 minigameEngine.register('call-response',     CallResponse);
+minigameEngine.register('scale-runner',      ScaleRunner);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase system
@@ -737,10 +740,9 @@ function wireButtons() {
   // AudioContext is created inside a user gesture and the mic bridge is ready.
   $('btn-lst-play')?.addEventListener('click', () => {
     const lvl = state.pendingLevel;
-    if (!lvl || lvl.stub) return;
+    const gameType = lvl?.gameType ?? 'tower-defense';
+    if (!lvl || lvl.stub || !minigameEngine.isLive(gameType)) return;
     state.currentLevel = lvl;
-
-    const gameType = lvl.gameType ?? 'tower-defense';
 
     // Tower-defense levels use the existing startGame() path (with calibration)
     if (gameType === 'tower-defense') {
@@ -1871,7 +1873,8 @@ function _handleWorldMapClick(x, y) {
   if (state.worldMap.selectedNodeId &&
       x >= pb.x && y >= pb.y && x <= pb.x + pb.w && y <= pb.y + pb.h) {
     const node = WORLD_MAP_NODES_BY_ID[state.worldMap.selectedNodeId];
-    if (node && !node.stub && !node.isHub && isNodeUnlocked(node, progression)) {
+    if (node && !node.isHub && isNodeUnlocked(node, progression) &&
+        minigameEngine.isLive(node.gameType ?? 'tower-defense')) {
       state.pendingLevel = node;
       setScene(SCENE.LEVEL_START);
     }

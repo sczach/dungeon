@@ -87,6 +87,17 @@ export class MinigameEngine {
     return this._registry.has(gameTypeId);
   }
 
+  /**
+   * Whether a gameType is "live" — registered with a real handler (not coming-soon).
+   * Used by the world map and game.js to decide whether a node is playable or a stub.
+   * tower-defense is always live (handled directly by game.js, not the engine registry).
+   */
+  isLive(gameTypeId) {
+    if (!gameTypeId || gameTypeId === 'coming-soon') return false;
+    if (gameTypeId === 'tower-defense') return true;
+    return this._registry.has(gameTypeId);
+  }
+
   /** Launch a minigame from a world map node. */
   launch(node, { canvas, ctx, state, difficulty, onNote, onComplete }) {
     this.stop();

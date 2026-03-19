@@ -704,11 +704,11 @@ const RHYTHM_6 = Object.freeze({
 const THEORY_1 = Object.freeze({
   ...makeStub(
     'theory-1', 'The Major Scale', '🎼', 'theory', ['hub'],
-    'Play the C major scale pattern and identify every interval within it',
-    'Learn the seven notes of the major scale and why they sound the way they do',
+    'Play the C major scale ascending and descending, cleanly and in time',
+    'Learn the seven notes of the major scale through muscle memory and rhythm',
     true   // isEntryNode
   ),
-  gameType: 'coming-soon',
+  gameType: 'scale-runner',
   stub:     false,
 });
 

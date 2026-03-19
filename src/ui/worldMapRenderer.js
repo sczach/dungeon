@@ -30,6 +30,7 @@
  */
 
 import { WORLD_MAP_NODES_BY_ID, REGIONS, isNodeUnlocked } from '../data/worldMap.js';
+import { minigameEngine } from '../systems/minigameEngine.js';
 
 // ─── Visual constants ─────────────────────────────────────────────────────────
 const NODE_R       = 24;    // standard node radius
@@ -311,7 +312,8 @@ export class WorldMapRenderer {
       const stars    = prog?.bestStars?.[n.id] ?? 0;
       const done     = stars >= 1;
       const unlocked = isNodeUnlocked(n, prog ?? { bestStars: {} });
-      const stub     = n.stub;
+      const live     = minigameEngine.isLive(n.gameType);   // registered handler exists
+      const stub     = n.stub || !live;                     // coming-soon nodes treated as stub visually
       const isHub    = n.isHub;
       const selected = selectedId === n.id;
       const r        = isHub ? NODE_HUB_R : n.isEntryNode ? NODE_ENTRY_R : NODE_R;
@@ -594,7 +596,8 @@ export class WorldMapRenderer {
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('← Choose a region →', pb.x + pb.w / 2, pb.y + pb.h / 2);
-    } else if (!node.stub && unlocked) {
+    } else if (!node.stub && unlocked && minigameEngine.isLive(node.gameType)) {
+      // Live + unlocked — full PLAY button
       const pulse = 0.88 + 0.12 * Math.sin(t * 3.2);
       ctx.fillStyle   = CLR.BTN;
       ctx.globalAlpha = pulse;
@@ -607,8 +610,8 @@ export class WorldMapRenderer {
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('▶  PLAY', pb.x + pb.w / 2, pb.y + pb.h / 2);
-    } else if (node.stub && unlocked) {
-      // Unlocked stub — region entry node that is coming soon; use region color tinted
+    } else if (unlocked && !minigameEngine.isLive(node.gameType)) {
+      // Unlocked but no registered handler — coming soon
       ctx.fillStyle = 'rgba(20,15,5,0.80)';
       ctx.beginPath();
       ctx.roundRect?.(pb.x, pb.y, pb.w, pb.h, 6) ?? ctx.rect(pb.x, pb.y, pb.w, pb.h);
