@@ -1,6 +1,65 @@
 # Handoff Notes — 2026-03-19
 
 ## Current phase
+Phase 2B — Minigame Engine + content expansion. Productive game development session: Crossing difficulty fixed, Scale Runner built, auto-populate system wired so future minigames light up the world map automatically on registration.
+
+## What is working
+- Crossing difficulty fixed: spawnMod now live in game.js (was dead code); Crossing spawnMod 1.5, difficultyMod 0.85, startResources 250 — two-lane pressure survivable on Easy
+- Scale Runner minigame (src/minigames/scaleRunner.js): C major scale ascending + descending, 3 rounds at 60/75/90 BPM, piano + pitch-positioned dot ladder visual, metronome click, PERFECT/OK/MISS hit windows
+- theory-1 ("The Major Scale") wired to 'scale-runner' — live and playable from hub
+- Auto-populate system: minigameEngine.isLive() is now single source of truth; world map coming-soon nodes render gray/locked; PLAY button and launch guard both gated on isLive(); adding any new minigame = register in game.js → nodes activate
+- feat/add-session-commands fully assessed and merged (gitignore commit on master)
+- Local master synced — 30 commits ahead of where it was at session start
+- Rhythm Challenge (rhythm-3/4/5) and Call & Response (music-1) code-reviewed: both production-ready, no blocking bugs
+
+## What is broken or in progress
+- Scale Runner unplaytested in browser — code is correct but needs live verification
+- theory-2 through theory-6 remain 'coming-soon' (correctly grayed out)
+- rhythm-6 and music-2/3 still 'coming-soon'
+- .obsidian/*.json perpetually dirty — never commit
+- gh CLI not installed on this machine — PRs must be opened manually via browser
+
+## What was done this session
+- src/data/levels.js — Crossing: difficultyMod 1.0→0.85, spawnMod 1.0→1.5, startResources 200→250; Campfire spawnMod comment corrected
+- src/game.js — spawnMod applied in 3 spawn interval calculations (was dead); ScaleRunner imported + registered; launch guard + world map click guard use minigameEngine.isLive()
+- src/systems/minigameEngine.js — added isLive(gameTypeId) method
+- src/ui/worldMapRenderer.js — imports minigameEngine; coming-soon nodes now visually locked; PLAY button conditional on isLive()
+- src/data/worldMap.js — theory-1 gameType: 'coming-soon' → 'scale-runner'; subtitle updated
+- src/minigames/scaleRunner.js — new file, ~370 lines; full Scale Runner minigame
+
+## Approaches that failed
+- None this session
+
+## Open PRs
+- master branch has 2 new commits not yet in a PR:
+  - 4940f43 fix: reduce Crossing difficulty and activate spawnMod for all levels
+  - c7acfb1 feat: Scale Runner minigame + auto-populate world map from registry
+  Open PR at: github.com/sczach/chordwars/compare/master
+
+## Next session should
+1. **Playtest Scale Runner** in browser — verify note ladder, hit windows, round transitions; tune BPM if needed
+2. **Playtest Crossing** on Easy — confirm spawnMod fix feels fair
+3. **Build Interval Quiz** (theory-2) — relative pitch, hear two notes, play the interval back; wire to 'interval-quiz' gameType
+4. **Update GAME_SYSTEMS.md** — add auto-populate system description, Scale Runner
+5. **Update DECISIONS.md** — remove stale Known Bugs entries (fixed 2026-03-17)
+
+## Source files most likely needed next session
+- src/minigames/scaleRunner.js — if tuning after playtest
+- src/data/levels.js — if tuning Crossing further
+- src/data/worldMap.js — wiring theory-2 to 'interval-quiz'
+- src/game.js — registering interval-quiz
+- src/systems/minigameEngine.js — BaseMinigame API reference
+- docs/context/GAME_SYSTEMS.md — vault update
+
+## Vault files that need updating
+- GAME_SYSTEMS.md — add auto-populate system, Scale Runner, note theory-1 live
+- DECISIONS.md — remove two stale Known Bugs entries (fixed 2026-03-17)
+
+---
+
+# Handoff Notes — 2026-03-19
+
+## Current phase
 Phase 2B — Minigame Engine + content expansion (active). No game changes this session — session command and worktree hygiene infrastructure.
 
 ## What is working
