@@ -1,3 +1,53 @@
+# Handoff Notes — 2026-03-19
+
+## Current phase
+Phase 2B — Minigame Engine + content expansion (active). No game changes this session — environment maintenance only.
+
+## What is working
+- All items from 2026-03-18 session remain unchanged
+- feat/add-session-commands branch is diverged from master (contains PRs #41–#48 not yet on master's remote HEAD at PR #40 — check GitHub for actual merge state)
+
+## What is broken or in progress
+- feat/add-session-commands branch needs to be assessed — it is 20+ commits ahead of local master; remote merge state may differ
+- `.obsidian/*.json` files are perpetually modified (workspace state) — never commit these
+- Disk at or near capacity on this machine — non-repo issue but affects snapshot reliability in Claude Code
+
+## What was done this session
+- No game files were modified
+- `~/.claude/scripts/prune-worktrees.sh` — created: runs `git worktree prune` + force-removes stale `.claude/worktrees/*` entries
+- `~/.claude/settings.json` — updated: Stop hook added to run prune-worktrees.sh at end of every session
+- Stale git worktree refs in this repo — pruned manually (9 refs cleaned)
+- 4 physical stale worktree directories — deleted (5 remained locked by process handles; will release on reboot)
+
+## Approaches that failed
+- None — maintenance tasks completed cleanly
+
+## Open PRs
+- feat/add-session-commands → /wrap-up and /resume command improvements → check https://github.com/sczach/chordwars for current PR status
+- All PRs #41–#48 may already be merged on remote (merged into this branch locally; remote master may lag)
+
+## Next session should
+1. **Bake worktree pruning into /resume and /wrap-up** — the Stop hook alone is not enough; worktrees must be pruned at session START (/resume) and session END (/wrap-up) as a named workflow step, so accumulation never silently fills the disk. Update both command files to include a `git worktree prune` step and a check that no stale dirs exist in `.claude/worktrees/`.
+2. Check `git log master..HEAD` vs remote — confirm whether PRs #41–#48 are on remote master or only local; merge feat/add-session-commands to master if not already
+3. Playtest rhythm-3/4/5 (Rhythm Challenge) and the Call & Response minigame
+4. Begin next minigame: theory-1 (note recognition — hear a note, identify it)
+5. Fix Crossing difficulty (too hard on Easy) — src/data/levels.js
+
+## Source files most likely needed next session
+- `~/.claude/commands/resume.md` — add worktree prune step
+- `~/.claude/commands/wrap-up.md` — add worktree prune step
+- src/minigames/rhythmChallenge.js — if tuning patterns
+- src/minigames/callResponse.js — if tuning ear training
+- src/data/worldMap.js — next region/minigame wiring
+- src/data/levels.js — crossing difficulty fix
+- src/game.js — new minigame registration
+
+## Vault files that need updating
+- DECISIONS.md — remove two stale Known Bugs entries (fixed 2026-03-17)
+- GAME_SYSTEMS.md — add Minigame Engine section, note rhythm region now live
+
+---
+
 # Handoff Notes — 2026-03-18
 
 ## Current phase
