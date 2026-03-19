@@ -45,11 +45,11 @@ It playtests outputs from all other engines and feeds corrections back.
 ## Inputs
 | Input | Source | Description |
 |-------|--------|-------------|
-| `level.waves[]` | `data/levels.js` | Spawn schedule: `[{ delay, type, count }]` per wave |
-| `state.difficulty` | `settings.js` | easy / medium / hard — scales HP, count, speed |
-| `state.wave` | `game.js` | Current wave index; used to escalate spawn rate |
-| `WaveManager` | `systems/waves.js` | Tracks spawn timers; calls `spawnEnemy()` |
-| `unit.attackSeq[]` | `entities/unit.js` | Per-unit note sequence assigned at spawn |
+| `WAVES[]` | `systems/waves.js` | 10-entry table: enemyCount + spawnInterval per wave |
+| `state.difficulty` | `settings.js` | easy / medium / hard — scales spawn interval (×1.5/×1.0/×0.7) |
+| `state.wave` | `game.js` | Current wave index; indexes into WAVES table |
+| `staffQueue` | `systems/staffQueue.js` | Unified note queue — attack groups assigned per enemy |
+| `telemetry` | `systems/telemetry.js` | Session data for balancing feedback loop |
 | `path.js` waypoints | `systems/path.js` | Fixed lane waypoints enemy units march along |
 | `state.units[]` | `game.js` | All live units (read for combat resolution) |
 
@@ -94,6 +94,44 @@ It playtests outputs from all other engines and feeds corrections back.
 - [ ] Enemies march along the correct lane waypoints and reach the player base if unchecked
 - [ ] Tutorial-4: enemy base is invulnerable until player fires a charged attack
 - [ ] Tutorial-2 (survival): all 3 waves spawn on schedule regardless of kill count
+
+---
+
+## Telemetry-Driven Balancing
+
+The telemetry system (`src/systems/telemetry.js`) captures per-session gameplay
+data that feeds directly into AI Engine balancing decisions.
+
+### Data collected
+| Event | Fields | Use |
+|-------|--------|-----|
+| `hit` | note, combo | Accuracy trends, combo distribution |
+| `miss` | note | Problem notes, accuracy by position |
+| `kill` | tier, groupId | Time-to-kill per tier |
+| `summon` | firstNote, groupId | Summon rate, unit type distribution |
+| `wave_start` | wave | Wave pacing, how far players reach |
+| `mode_switch` | mode | Mode usage patterns |
+| `level_end` | won, stars, accuracy | Win rate, star distribution |
+
+### Balancing feedback loop
+```
+Telemetry → Session summaries (localStorage)
+  → Export JSON (Settings panel)
+    → Analyze patterns:
+       accuracy < 50%    → sequences too hard, reduce length
+       maxCombo < 3      → difficulty too high, slow spawn rate
+       avg wave reached  → adjust wave count / enemy HP
+       time-to-kill > 8s → reduce enemy HP
+       summon rate low   → increase resource gain
+    → Update WAVES table or staffQueue constants
+    → Re-test via /gametest and /balancecheck
+```
+
+### Key metrics for tuning
+- **Accuracy by difficulty**: Easy should be >70%, Medium >55%, Hard >40%
+- **Combo distribution**: median maxCombo should be ≥5 on Easy
+- **Wave reach**: players should reach wave 5+ on Easy before first death
+- **Win rate**: ~80% Easy, ~50% Medium, ~25% Hard (non-tutorial)
 
 ---
 
