@@ -6,6 +6,10 @@
 ## Load platform rules
 @~/ai-dev-platform/rules/platform.md
 
+## Load ChordWars domain skills
+@~/.claude/skills/chordwars-architecture/SKILL.md
+@~/.claude/skills/chordwars-audio-pipeline/SKILL.md
+
 ---
 
 ## Project overview
@@ -124,6 +128,25 @@ INSTRUMENT_SELECT   ← choose Piano / Guitar (soon) / Voice (soon)
 - Use `refactor-cleaner` agent for dead code, never inline
 - Run `/checkpoint` before starting a new major feature
 - Run `/learn` at the end of every productive session
+
+## Code review — ChordWars-specific checklist
+The generic `code-reviewer` agent has React/Node.js knowledge that is irrelevant here. When reviewing ChordWars code, focus on:
+
+**Ignore (not applicable):**
+- React/Next.js patterns, JSX, hooks
+- Node.js / backend / server-side patterns
+- TypeScript type errors (no TS in this project)
+- Bundle size / tree-shaking / webpack config
+
+**Always check:**
+- `renderer.js` mutations — any write to `state` from inside the renderer is a bug
+- Allocations in hot path — `new Array()`, object literals, `new Uint8Array()` inside `update()` or `draw()`
+- DOM reads in rAF loop — `offsetWidth`, `getBoundingClientRect` must be cached on resize, not read per frame
+- Circular imports — any new import chain that could loop back should be checked; extract to `constants.js`
+- Oscillator cleanup — every `createOscillator()` call must have a corresponding `osc.stop(...)`
+- Safari compatibility — `AudioWorklet` usage (ban it), `webkitAudioContext` fallback presence
+- `canvas.toDataURL()` or `getImageData()` in hot path (triggers GPU readback)
+- `ctx.save()`/`ctx.restore()` pairing — every save must have a matching restore
 
 ---
 

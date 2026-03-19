@@ -1,6 +1,59 @@
 # Handoff Notes — 2026-03-19
 
 ## Current phase
+Phase 2B — Minigame Engine + content expansion (active). No game code changed this session — AI dev platform integration and skill system bootstrapping.
+
+## What is working
+- All items from previous 2026-03-19 session (Scale Runner, Crossing fix, auto-populate) remain unchanged
+- `chordwars-architecture` skill live at `~/.claude/skills/chordwars-architecture/SKILL.md` — loads every session via CLAUDE.md `@` directive
+- `chordwars-audio-pipeline` skill live at `~/.claude/skills/chordwars-audio-pipeline/SKILL.md` — loads every session via CLAUDE.md `@` directive
+- `~/.claude/settings.json` now has two PreToolUse hooks: `continuous-learning-v2/hooks/observe.sh pre` (completes tool_start observation stream) and `strategic-compact/suggest-compact.sh` (fires on Edit/Write after ~50 tool calls)
+- CLAUDE.md updated: domain skill `@` directives + ChordWars-specific code review checklist (what the `code-reviewer` agent should ignore vs always check for this project)
+
+## What is broken or in progress
+- Scale Runner unplaytested in browser (carried over from previous session)
+- theory-2 through theory-6 remain 'coming-soon'
+- `.obsidian/*.json` perpetually dirty — never commit
+- gh CLI not installed — PRs must be opened manually via browser
+- The `~/.claude/` skill system is outside the repo — `chordwars-architecture` and `chordwars-audio-pipeline` skills are not version-controlled (they live in the global Claude config, not in the repo)
+
+## What was done this session
+- `CLAUDE.md` (repo root) — added `@~/.claude/skills/chordwars-architecture/SKILL.md` and `@~/.claude/skills/chordwars-audio-pipeline/SKILL.md` load directives; added ChordWars-specific code review checklist section under Workflow rules
+- `~/.claude/settings.json` (global, not in repo) — added PreToolUse hooks for observe.sh and suggest-compact.sh; Stop hook for prune-worktrees.sh preserved
+- `~/.claude/skills/chordwars-architecture/SKILL.md` (global, not in repo) — new skill: state ownership, renderer purity, circular import Safari failure mode, no-alloc-in-rAF, DPR scaling, scene system, SafariWorklet ban, input modes
+- `~/.claude/skills/chordwars-audio-pipeline/SKILL.md` (global, not in repo) — new skill: settled pipeline constants (DO NOT CHANGE), AudioContext lifecycle, safe/unsafe nodes, oscillator cleanup, kill-melody batching trap, pre-allocated buffers, sample-rate rule
+
+## Approaches that failed
+- None this session
+
+## Open PRs
+- No new PR from this session — all changes are either in CLAUDE.md on master (committed directly) or in `~/.claude/` (outside the repo)
+
+## Next session should
+1. **Playtest Scale Runner** in browser — verify note ladder visual, hit windows, round transitions at 60/75/90 BPM; tune if needed (`src/minigames/scaleRunner.js`)
+2. **Playtest Crossing** on Easy — confirm spawnMod fix feels fair under two-lane pressure
+3. **Build Interval Quiz** (theory-2) — relative pitch: hear two notes, play the interval back; wire to `'interval-quiz'` gameType in worldMap.js + game.js
+4. **Update GAME_SYSTEMS.md** — add auto-populate system description, Scale Runner entry
+5. **Update DECISIONS.md** — remove stale Known Bugs entries (fixed 2026-03-17)
+
+## Source files most likely needed next session
+- `src/minigames/scaleRunner.js` — if tuning Scale Runner after playtest
+- `src/data/levels.js` — if tuning Crossing further
+- `src/data/worldMap.js` — wiring theory-2 to 'interval-quiz'
+- `src/game.js` — registering interval-quiz minigame
+- `src/systems/minigameEngine.js` — BaseMinigame API reference
+- `docs/context/GAME_SYSTEMS.md` — vault update
+- `~/.claude/skills/chordwars-architecture/SKILL.md` — if extending with gameloop or design-principle content
+
+## Vault files that need updating
+- `GAME_SYSTEMS.md` — add auto-populate system, Scale Runner, note theory-1 live (carried over)
+- `DECISIONS.md` — remove two stale Known Bugs entries (fixed 2026-03-17) (carried over)
+
+---
+
+# Handoff Notes — 2026-03-19
+
+## Current phase
 Phase 2B — Minigame Engine + content expansion. Productive game development session: Crossing difficulty fixed, Scale Runner built, auto-populate system wired so future minigames light up the world map automatically on registration.
 
 ## What is working
