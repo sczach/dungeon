@@ -48,6 +48,9 @@ import {
   onGameEvent,
 } from './audio/soundEngine.js';
 import { applyLesson }                             from './data/lessons.js';
+import { WAVES }                                   from './systems/waves.js';
+import { staffQueueSystem }                        from './systems/staffQueue.js';
+import { telemetrySystem }                         from './systems/telemetry.js';
 import { wireSettingsUI }                           from './ui/screens.js';
 import { minigameEngine }                          from './systems/minigameEngine.js';
 import { MetronomeMastery }                        from './minigames/metronomeMastery.js';
@@ -143,10 +146,7 @@ function createInitialState() {
     shakeTime:      0,       // performance.now() when shake started (0 = none)
     shakeIntensity: 0,       // px amplitude of shake
 
-    // ── Charge mechanic ───────────────────────
-    chargeNote:      null,   // string|null — note held in charge mode
-    chargeStartTime: 0,      // performance.now() when charge hold started
-    chargeProgress:  0,      // 0.0–3.0 (0.8 s per segment)
+    // ── Charge (combo-based, managed by staffQueue) ──
     waveGraceEnd:    0,      // state.time when wave grace period ends (bases invulnerable until then)
 
     // ── Note enforcement (attack mode cue gating) ─
@@ -168,7 +168,7 @@ function createInitialState() {
     currentCue:           null,        // {note, startTime, deadline, status} | null
 
     // ── Mode & settings ───────────────────────
-    inputMode:       'summon',   // 'summon' | 'attack' | 'charge' — toggled by Space
+    inputMode:       'summon',   // 'summon' | 'attack' — toggled by Space
     modeAnnounce:    0,          // performance.now() timestamp; 0 = none
     showNoteLabels:  false,      // overridden by loadSettings()
     difficulty:      'medium',   // overridden by loadSettings()
@@ -462,6 +462,13 @@ function _handleVictory() {
   if (level?.id) {
     state.worldMap.lastPlayedNodeId = level.id;
   }
+
+  // Record telemetry
+  telemetrySystem.endSession({
+    won: true,
+    stars: state.starsEarned || 0,
+    accuracy: state.noteAccuracy || 0,
+  });
 
   // Always show VICTORY screen — player navigates back to world map themselves
   setScene(SCENE.VICTORY);
@@ -852,19 +859,20 @@ function startGame(levelConfig) {
   const skillResourceBonus = state.resources - 200;   // delta from default
   state.resources = level.startResources + skillResourceBonus;
 
-  // Apply difficulty to spawn interval — new dense-wave system
-  // Easy=2s, Medium=1.5s, Hard=1s between individual enemy spawns
-  const DIFF_INTERVALS = { easy: 2, medium: 1.5, hard: 1 };
-  const baseInterval   = DIFF_INTERVALS[state.difficulty] ?? 1.5;
-  state.enemySpawnInterval = Math.max(0.5, baseInterval + (state.skillSpawnIntervalBonus || 0));
-  state.enemySpawnTimer    = 0;   // first enemy spawns on the very first update tick
+  // Spawn interval now comes from the WAVES table (per-wave pacing).
+  // Difficulty applies a multiplier: Easy ×1.5 (slower), Medium ×1.0, Hard ×0.7 (faster).
+  const DIFF_MULT = { easy: 1.5, medium: 1.0, hard: 0.7 };
+  state._waveDiffMult      = DIFF_MULT[state.difficulty] ?? 1.0;
+  state.enemySpawnInterval = Math.max(0.3, WAVES[0].spawnInterval * state._waveDiffMult
+                             + (state.skillSpawnIntervalBonus || 0));
+  state.enemySpawnTimer    = 0;   // first enemy spawns after grace period ends
 
-  // Initialise wave density fields
+  // Initialise wave density fields — use WAVES table for per-wave enemy count
   state.waveEnemiesSpawned = 0;
   state.waveEnemiesKilled  = 0;
-  state.waveSize           = 8;   // minimum 8 enemies per wave
+  state.waveSize           = WAVES[0].enemyCount;   // wave 1 count from table
   state.waveOverlapping    = false;
-  state.betweenWavesTimer  = 0;   // 0 = start spawning immediately (no opening gap)
+  state.betweenWavesTimer  = 5;   // 5 s grace period so player can orient before wave 1
 
   // Attach level-as-lesson content (sets state.currentLesson)
   applyLesson(state, level.id);
@@ -874,9 +882,12 @@ function startGame(levelConfig) {
   attackSequenceSystem.reset(state);
   cueSystem.reset(state);
   promptManager.reset();
+  staffQueueSystem.reset(state);
+  telemetrySystem.startSession(state.levelId || 'unknown', state.difficulty);
 
   // Announce Wave 1
   state.waveAnnounce = performance.now();
+  telemetrySystem.record('wave_start', { wave: 1 });
 
   // Set initial phase label — bases always start vulnerable (grace period handled per-wave)
   {
@@ -908,7 +919,7 @@ function startGame(levelConfig) {
   _prevPlayerHp     = Infinity;
   _prevModeAnnounce = 0;
 
-  keyboardInput.start(state, tablatureSystem, attackSequenceSystem, cueSystem);
+  keyboardInput.start(state, tablatureSystem, attackSequenceSystem, cueSystem, staffQueueSystem);
   setScene(SCENE.PLAYING);
   startSoundEngine(state);
 }
@@ -1005,6 +1016,7 @@ function spawnEnemyUnit() {
     // (damage buff applies to player units only — enemy units are untouched)
   }
   attackSequenceSystem.assignSequence(unit);
+  staffQueueSystem.enqueueAttack(unit, state);
   state.units.push(unit);
 }
 
@@ -1117,6 +1129,106 @@ function spawnPlayerUnit(tier, free = false, unitType = null) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Staff queue effect handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Apply effect descriptors returned by staffQueueSystem.update() or .onNote().
+ * This is where staff queue events translate into game state mutations.
+ *
+ * @param {Array<{type: string, data: object}>} effects
+ * @param {object} state
+ */
+function _applyStaffEffects(effects, state) {
+  for (let i = 0; i < effects.length; i++) {
+    const { type, data } = effects[i];
+
+    switch (type) {
+      case 'noteHit': {
+        telemetrySystem.record('hit', { note: data.note, combo: data.combo });
+        break;
+      }
+
+      case 'kill': {
+        telemetrySystem.record('kill', { tier: data.tier, groupId: data.groupId });
+        // Lightning bolt kill on the targeted enemy
+        const unit = data.targetUnit;
+        if (unit && unit.alive) {
+          unit.hp = 0;
+          unit.alive = false;
+          // Fire lightning bolt visual
+          attackSequenceSystem.fireBoltAt(
+            state.playerBase.x, state.playerBase.y,
+            unit.x, unit.y, state
+          );
+          // Score + resources
+          const tier = data.tier || 1;
+          state.score += tier * 100;
+          state.resources = Math.min(200, state.resources + [0, 20, 30, 50][tier]);
+          state.waveEnemiesKilled++;
+          onGameEvent('kill');
+          // Kill melody
+          const melodyNotes = state.staffQueue.notes
+            .filter(n => n.groupId === data.groupId && n.status === 'hit')
+            .map(n => n.note);
+          if (melodyNotes.length >= 2) {
+            playSuccessKill(melodyNotes);
+          }
+        }
+        break;
+      }
+
+      case 'summon': {
+        telemetrySystem.record('summon', { firstNote: data.firstNote, groupId: data.groupId });
+        // Determine unit type from first note of the summon group
+        const noteToType = {
+          'C3': 'tank', 'D3': 'tank',
+          'E3': 'dps',  'F3': 'dps',
+          'G3': 'ranged', 'A3': 'ranged',
+          'B3': 'mage',
+        };
+        const unitType = noteToType[data.firstNote] ?? 'tank';
+        spawnPlayerUnit(1, false, unitType);
+        onGameEvent('spawn');
+        break;
+      }
+
+      case 'directAttack': {
+        telemetrySystem.record('miss', { note: data.note });
+        // Miss-based direct attack (same as existing attack mode miss)
+        // Find nearest alive enemy
+        let nearest = null;
+        let nearDist = Infinity;
+        for (let j = 0; j < state.units.length; j++) {
+          const u = state.units[j];
+          if (u.team === 'enemy' && u.alive) {
+            const d = u.x - state.playerBase.x;
+            if (d < nearDist) { nearDist = d; nearest = u; }
+          }
+        }
+        const target = nearest || state.enemyBases.find(b => !b.isDestroyed());
+        if (target) {
+          const accuracy = Math.max(0.1, 1 - (data.misses || 0) * 0.05);
+          const dmg = Math.round(15 * accuracy * 0.5);  // half damage on miss
+          if (target.hp != null) {
+            target.hp = Math.max(0, target.hp - dmg);
+            if (target.hp <= 0) target.alive = false;
+          } else if (typeof target.takeDamage === 'function') {
+            target.takeDamage(dmg);
+          }
+          // Fire bolt visual
+          attackSequenceSystem.fireBoltAt(
+            state.playerBase.x, state.playerBase.y,
+            target.x, target.y, state
+          );
+        }
+        break;
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main loop
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1200,6 +1312,17 @@ function update(dt) {
       cueSystem.update(dt, state);
       promptManager.update(dt, state);
 
+      // ── Staff queue update (new unified system) ─────────────────────────
+      {
+        const effects = staffQueueSystem.update(dt, state);
+        _applyStaffEffects(effects, state);
+      }
+      // ── Drain pending effects from keyboard note input ─────────────────
+      if (state.staffQueue?._pendingEffects?.length > 0) {
+        _applyStaffEffects(state.staffQueue._pendingEffects, state);
+        state.staffQueue._pendingEffects.length = 0;
+      }
+
       // ── Mode indicator tracking (Fix 4) ──────────────────────────────────
       if (state.inputMode === 'attack') {
         state.lastAttackModeTime = state.time;
@@ -1209,13 +1332,6 @@ function update(dt) {
         state.attackSuggestPulse = enemiesPresent
           && state.inputMode !== 'attack'
           && (state.time - state.lastAttackModeTime) > 5;
-      }
-
-      // ── Charge progress (held-note mechanic) ──────────────────────────────
-      if (state.inputMode === 'charge' && state.chargeNote !== null) {
-        const elapsedSec     = (performance.now() - state.chargeStartTime) / 1000;
-        const stabilityMult  = state.audio.pitchStable ? 1.3 : 1.0;
-        state.chargeProgress = Math.min(3.0, (elapsedSec / 0.8) * stabilityMult);
       }
 
       // ── Lightning bolt cleanup (remove expired bolts) ──────────────────
@@ -1287,7 +1403,9 @@ function update(dt) {
           state.waveAnnounce      = performance.now();
           state.waveEnemiesSpawned = 0;
           state.waveEnemiesKilled  = 0;
-          state.waveSize           = Math.max(8, state.waveSize);
+          const wCfg = WAVES[Math.min(state.wave - 1, WAVES.length - 1)];
+          state.waveSize           = wCfg.enemyCount;
+          state.enemySpawnInterval = Math.max(0.3, wCfg.spawnInterval * (state._waveDiffMult || 1));
           state.waveOverlapping    = true;
           state.betweenWavesTimer  = 0;
           // Brief base invulnerability on each wave advance (non-survival levels)
@@ -1297,6 +1415,7 @@ function update(dt) {
               if (!state.enemyBases[bi].isDestroyed()) state.enemyBases[bi].vulnerable = false;
             }
           }
+          telemetrySystem.record('wave_start', { wave: state.wave });
           console.log(`[wave] overlap advance → wave ${state.wave}`);
         }
 
@@ -1309,9 +1428,12 @@ function update(dt) {
           state.waveAnnounce      = performance.now();
           state.waveEnemiesSpawned = 0;
           state.waveEnemiesKilled  = 0;
-          state.waveSize           = Math.max(8, state.waveSize);
+          const wCfg = WAVES[Math.min(state.wave - 1, WAVES.length - 1)];
+          state.waveSize           = wCfg.enemyCount;
+          state.enemySpawnInterval = Math.max(0.3, wCfg.spawnInterval * (state._waveDiffMult || 1));
           state.waveOverlapping    = false;
-          state.betweenWavesTimer  = 4;  // max 4 s gap before next wave begins
+          state.betweenWavesTimer  = 4;  // 4 s gap before next wave begins
+          telemetrySystem.record('wave_start', { wave: state.wave });
           console.log(`[wave] cleared → wave ${state.wave} (gap ${state.betweenWavesTimer}s)`);
         }
 
@@ -1451,6 +1573,7 @@ function update(dt) {
 
       // ── Win / lose ────────────────────────────────────────────────────────
       if (state.playerBase.isDestroyed()) {
+        telemetrySystem.endSession({ won: false, stars: 0, accuracy: 0 });
         setScene(SCENE.DEFEAT);
         break;
       }
@@ -1582,10 +1705,7 @@ initPianoTouchInput(canvas, (note) => keyboardInput.dispatchNote(note), (mode) =
   state.inputMode    = mode;
   state.modeAnnounce = performance.now();
   if (mode === 'summon') tablatureSystem.refresh(state);
-  if (mode !== 'charge') {
-    state.chargeNote     = null;
-    state.chargeProgress = 0;
-  }
+  telemetrySystem.record('mode_switch', { mode });
   console.log(`[mode] tapped → ${mode}`);
 });
 
@@ -1768,6 +1888,9 @@ function _handleWorldMapClick(x, y) {
     }
   }
 }
+
+// ── Request landscape orientation on mobile ──────────────────────────────────
+screen.orientation?.lock?.('landscape').catch(() => {});
 
 requestAnimationFrame((ts) => {
   lastTimestamp = ts;

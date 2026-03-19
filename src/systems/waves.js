@@ -1,147 +1,44 @@
 /**
  * @file src/systems/waves.js
- * Wave configuration table and WaveManager class.
+ * Wave configuration table — hand-tuned per-wave enemy count and spawn pacing.
  *
- * WAVES
- * ─────
- * Ten waves, linearly interpolated between:
- *   Wave 1:  5 enemies, 30 hp,  80 px/s,  2.0 s spawn interval
- *   Wave 10: 20 enemies, 150 hp, 220 px/s, 0.5 s spawn interval
- *
- * Speed is in logical pixels/second.  Enemy.update() divides by getPathLength()
- * so pathT advances as a normalised fraction regardless of canvas size.
- *
- * WAVEMANAGER
- * ───────────
- * Mutates state.enemies (push) and state.wave (increment) directly.
- * Does NOT use filter/map — enemies are removed by game.js via backwards splice.
- * Exposes .complete = true when all 10 waves are done; game.js triggers VICTORY.
- *
- * Spawn timer uses += (not =) to prevent drift when a frame runs long.
- * First enemy of each wave spawns on the very first update() call for that wave.
+ * Consumed by game.js which owns the actual spawn loop and wave state.
+ * Enemy HP and speed come from TIER_STATS in unit.js, scaled by level.difficultyMod.
+ * Difficulty setting applies a multiplier to spawnInterval (Easy ×1.5, Hard ×0.7).
  */
-
-import { Enemy } from '../entities/enemy.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wave table
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Linear interpolation helper (no allocation). */
-function lerp(a, b, t) { return a + (b - a) * t; }
-
 /**
- * Ten wave configuration objects.
+ * Ten wave configuration objects — hand-tuned for a gentle difficulty ramp.
  * Index 0 = Wave 1, index 9 = Wave 10.
+ *
+ * Wave 1 gives ~15-20s of breathing room so the player can orient.
+ * Difficulty ramps gradually through waves 2-6, then escalates sharply 7-10.
+ *
+ * enemyCount:    how many enemies spawn this wave
+ * spawnInterval: seconds between individual enemy spawns
+ *
+ * NOTE: Enemy HP and speed come from TIER_STATS in unit.js, scaled by
+ * level.difficultyMod. The wave table controls count + pacing only.
  *
  * @type {ReadonlyArray<Readonly<{
  *   enemyCount: number,
- *   enemyHp: number,
- *   enemySpeed: number,
  *   spawnInterval: number
  * }>>}
  */
-export const WAVES = Object.freeze(
-  Array.from({ length: 10 }, (_, i) => {
-    const t = i / 9;  // 0 at wave 1, 1 at wave 10
-    return Object.freeze({
-      enemyCount:    Math.round(lerp(5,   20,  t)),  // 5 → 20
-      enemyHp:       Math.round(lerp(30,  150, t)),  // 30 → 150
-      enemySpeed:    Math.round(lerp(80,  220, t)),  // 80 → 220 px/s
-      spawnInterval: +lerp(2.0, 0.5, t).toFixed(3), // 2.0 → 0.5 s
-    });
-  })
-);
+export const WAVES = Object.freeze([
+  Object.freeze({ enemyCount:  3, spawnInterval: 4.0 }),  // Wave 1  — gentle intro
+  Object.freeze({ enemyCount:  4, spawnInterval: 3.5 }),  // Wave 2
+  Object.freeze({ enemyCount:  5, spawnInterval: 3.0 }),  // Wave 3
+  Object.freeze({ enemyCount:  6, spawnInterval: 2.5 }),  // Wave 4  — starting to ramp
+  Object.freeze({ enemyCount:  8, spawnInterval: 2.0 }),  // Wave 5  — medium challenge
+  Object.freeze({ enemyCount: 10, spawnInterval: 1.8 }),  // Wave 6
+  Object.freeze({ enemyCount: 12, spawnInterval: 1.5 }),  // Wave 7  — serious
+  Object.freeze({ enemyCount: 14, spawnInterval: 1.2 }),  // Wave 8  — hard
+  Object.freeze({ enemyCount: 16, spawnInterval: 0.8 }),  // Wave 9  — very hard
+  Object.freeze({ enemyCount: 20, spawnInterval: 0.5 }),  // Wave 10 — boss wave
+]);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WaveManager
-// ─────────────────────────────────────────────────────────────────────────────
-
-export class WaveManager {
-  constructor() {
-    /** @public true after all waves are fully spawned and cleared. */
-    this.complete = false;
-
-    /** @private enemies spawned in the current wave. */
-    this._spawned = 0;
-
-    /**
-     * @private seconds until next spawn.
-     * Starts at 0 so the first enemy of each wave spawns on the first tick.
-     */
-    this._spawnTimer = 0;
-  }
-
-  /**
-   * Reset all internal state so a replay starts cleanly from Wave 1.
-   * Call from game.js startGame() before Object.assign(state, fresh).
-   */
-  reset() {
-    this.complete    = false;
-    this._spawned    = 0;
-    this._spawnTimer = 0;
-  }
-
-  /**
-   * Per-frame update — spawn enemies and advance waves.
-   *
-   * Mutates:
-   *   state.enemies  — enemies pushed here (removed by game.js splice)
-   *   state.wave     — incremented when a wave clears
-   *
-   * Sets this.complete = true after Wave 10 is fully cleared.
-   *
-   * @param {number} dt    — delta time in seconds
-   * @param {object} state — canonical game state
-   */
-  update(dt, state) {
-    if (this.complete) return;
-
-    // ── Initialise Wave 1 on the first call ──────────────────────────────────
-    if (state.wave === 0) {
-      state.wave         = 1;
-      this._spawned      = 0;
-      this._spawnTimer   = 0;  // spawn first enemy this tick
-      state.waveAnnounce = performance.now();
-    }
-
-    const waveIdx = state.wave - 1;
-    if (waveIdx < 0 || waveIdx >= WAVES.length) return;
-
-    const cfg = WAVES[waveIdx];
-    const W   = state.canvas.width;
-    const H   = state.canvas.height;
-
-    // ── Spawn phase ──────────────────────────────────────────────────────────
-    if (this._spawned < cfg.enemyCount) {
-      this._spawnTimer -= dt;
-
-      if (this._spawnTimer <= 0) {
-        const e = new Enemy(cfg);
-        // Initialise x/y at spawn point (dt=0 → pathT stays 0)
-        e.update(0, W, H);
-        state.enemies.push(e);
-
-        this._spawned++;
-        // += avoids drift: if a frame ran long, we don't skip the next spawn
-        this._spawnTimer += cfg.spawnInterval;
-      }
-    }
-
-    // ── Wave-clear check ─────────────────────────────────────────────────────
-    // All enemies for this wave must be spawned AND all must have left
-    // state.enemies (killed or breached) before we advance.
-    if (this._spawned >= cfg.enemyCount && state.enemies.length === 0) {
-      if (state.wave < WAVES.length) {
-        // Advance to next wave — first enemy spawns on the very next tick
-        state.wave++;
-        this._spawned      = 0;
-        this._spawnTimer   = 0;
-        state.waveAnnounce = performance.now();
-      } else {
-        // All 10 waves cleared
-        this.complete = true;
-      }
-    }
-  }
-}

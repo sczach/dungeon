@@ -16,6 +16,7 @@ import {
 } from './constants.js';
 import { renderHUD } from './ui/hud.js';
 import { WorldMapRenderer } from './ui/worldMapRenderer.js';
+import { drawStaff } from './ui/staffRenderer.js';
 
 // ─────────────────────────────────────────────
 // Palette
@@ -224,9 +225,12 @@ export class Renderer {
     this._drawLightningBolts(state, W, H);
     this._drawProjectiles(state);
     this._drawDamageNumbers(state);
-    this._drawEnemySequences(state, W, H);
-    this._drawTablature(state, W, H);       // top-of-screen summon prompt (above map)
-    this._drawChargeBar(state, W, H);       // charge bar (charge mode only)
+    // Staff notation replaces per-enemy cue pills and tablature bar
+    drawStaff(this.ctx, state, W, H);
+    // Legacy renders kept but bypassed — staff queue is the primary display now
+    // this._drawEnemySequences(state, W, H);
+    // this._drawTablature(state, W, H);
+    // this._drawChargeBar(state, W, H);
     this._drawWaveAnnouncement(state, W, H);
     this._drawPhaseAnnouncement(state, W, H);
     this._drawPhaseLabel(state, W, H);

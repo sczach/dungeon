@@ -171,8 +171,7 @@ export class KeyboardInput {
     this._tablature    = null;
     this._attackSeq    = null;
     this._cue          = null;
-    /** Key currently held in charge mode (raw key string, lower-cased). */
-    this._chargeKey    = null;
+    this._staffQueue   = null;
   }
 
   /**
@@ -182,12 +181,13 @@ export class KeyboardInput {
    * @param {import('../systems/attackSequence.js').AttackSequenceSystem} attackSeqSystem
    * @param {import('../systems/cueSystem.js').CueSystem}                 cueSystem
    */
-  start(state, tablatureSystem, attackSeqSystem, cueSystem) {
+  start(state, tablatureSystem, attackSeqSystem, cueSystem, staffQueueSys) {
     this.stop();
     this._state        = state;
     this._tablature    = tablatureSystem;
     this._attackSeq    = attackSeqSystem;
     this._cue          = cueSystem ?? null;
+    this._staffQueue   = staffQueueSys ?? null;
     this._handler      = (e) => this._onKeyDown(e);
     this._keyUpHandler = (e) => this._onKeyUp(e);
     document.addEventListener('keydown', this._handler);
@@ -205,12 +205,6 @@ export class KeyboardInput {
       document.removeEventListener('keyup', this._keyUpHandler);
       this._keyUpHandler = null;
     }
-    // Clear any in-progress charge
-    if (this._state) {
-      this._state.chargeNote     = null;
-      this._state.chargeProgress = 0;
-    }
-    this._chargeKey = null;
   }
 
   /**
@@ -232,22 +226,16 @@ export class KeyboardInput {
     const state = this._state;
     if (!state || state.scene !== SCENE.PLAYING) return;
     if (e.repeat) return;
-    // Space bar → cycle through allowed modes (default: SUMMON → ATTACK → CHARGE → SUMMON)
+    // Space bar → cycle through allowed modes (default: SUMMON → ATTACK → SUMMON)
     if (e.key === ' ') {
       e.preventDefault();
       // Respect tutorial mechanic locks — only cycle within allowed modes
-      const MODES  = state.allowedModes ?? ['summon', 'attack', 'charge'];
+      const MODES  = state.allowedModes ?? ['summon', 'attack'];
       if (MODES.length <= 1) return;  // single-mode level — no cycling
       const curIdx = MODES.indexOf(state.inputMode);
       const next   = MODES[(curIdx + 1) % MODES.length];
       state.inputMode    = next;
       state.modeAnnounce = performance.now();
-      // Clear charge state when leaving charge mode
-      if (next !== 'charge') {
-        state.chargeNote     = null;
-        state.chargeProgress = 0;
-        this._chargeKey      = null;
-      }
       // Refresh summon prompt on entry so player gets a fresh sequence
       if (next === 'summon' && this._tablature) {
         this._tablature.refresh(state);
@@ -262,58 +250,16 @@ export class KeyboardInput {
     const note = KEY_TO_NOTE[e.key.toLowerCase()];
     if (!note) return;
 
-    // Charge mode: begin hold on keydown (don't route through normal attack/tablature)
-    if (state.inputMode === 'charge') {
-      try { playTone(note); } catch (_) {}
-      state.chargeNote      = note;
-      state.chargeStartTime = performance.now();
-      state.chargeProgress  = 0;
-      this._chargeKey       = e.key.toLowerCase();
-      if (state.input) {
-        state.input.pressedKeys.add(note);
-        setTimeout(() => state.input.pressedKeys.delete(note), PRESS_CLEAR_MS);
-      }
-      if (this._cue) this._cue.onNote(note, state);
-      return;
-    }
-
     this._handleNote(note, state);
   }
 
   /**
-   * Release handler — fires a charged attack if a note was held long enough.
-   * Only active in charge mode; ignored in other modes.
+   * Release handler — currently unused (charge mode removed).
+   * Kept for future chord-detection (simultaneous key release).
    * @param {KeyboardEvent} e
    */
   _onKeyUp(e) {
-    const state = this._state;
-    if (!state || state.scene !== SCENE.PLAYING) return;
-    if (state.inputMode !== 'charge') return;
-    if (!this._chargeKey || e.key.toLowerCase() !== this._chargeKey) return;
-
-    if (state.chargeNote !== null && state.chargeProgress >= 1.0) {
-      // Hardcore mode: cue gating in CHARGE — wrong note held = charge blocked
-      if (state.hardcoreMode) {
-        const now      = performance.now();
-        const cue      = state.currentCue;
-        const cueActive = cue && cue.status === 'active' && now <= cue.deadline;
-        if (cueActive && state.chargeNote !== cue.note) {
-          state.wrongNoteFlash = { time: now };
-          state.chargeNote     = null;
-          state.chargeProgress = 0;
-          this._chargeKey      = null;
-          return;
-        }
-      }
-      const level = Math.min(3, Math.floor(state.chargeProgress));
-      console.log(`[charge] release level=${level} note=${state.chargeNote}`);
-      if (this._attackSeq) {
-        this._attackSeq.fireChargedAttack(level, state.chargeNote, state);
-      }
-    }
-    state.chargeNote     = null;
-    state.chargeProgress = 0;
-    this._chargeKey      = null;
+    // No-op — charge mode removed; combo-based charge handled by staffQueue
   }
 
   /**
@@ -333,11 +279,21 @@ export class KeyboardInput {
     }
     // 3. Tone
     try { playTone(note); } catch (_) {}
-    // 4. Route by mode
-    if (state.inputMode === 'summon') {
-      if (this._tablature) this._tablature.onNote(note, state);
+    // 4. Route through staff queue (new unified system)
+    if (this._staffQueue && state.staffQueue && state.staffQueue.notes.length > 0) {
+      const effects = this._staffQueue.onNote(note, state);
+      if (effects.length > 0) {
+        // Store effects for game.js to drain next frame
+        if (!state.staffQueue._pendingEffects) state.staffQueue._pendingEffects = [];
+        state.staffQueue._pendingEffects.push(...effects);
+      }
     } else {
-      if (this._attackSeq) this._attackSeq.onNote(note, state);
+      // Fallback to legacy routing when staff queue is empty/absent
+      if (state.inputMode === 'summon') {
+        if (this._tablature) this._tablature.onNote(note, state);
+      } else {
+        if (this._attackSeq) this._attackSeq.onNote(note, state);
+      }
     }
     // 3b. Cue system always active (awards +10 on hit, +3 on free play)
     if (this._cue) this._cue.onNote(note, state);
